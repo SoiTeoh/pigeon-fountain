@@ -1,28 +1,35 @@
 import './style.css';
-import { tuning } from './config/tuning';
+import { STAGES, tuning } from './config/tuning';
 import { SoundEngine } from './game/audio';
+import {
+  evaluateStageStars,
+  shouldAdvanceSimulation,
+  type ScreenMode,
+} from './game/rules';
 import { PigeonFountainWorld } from './game/world';
+import {
+  applyEndlessCompletion,
+  applyStageCompletion,
+  readProgress,
+  writeProgress,
+  type GameMode,
+  type StageId,
+} from './platform/storage';
 import { drawGameFrame } from './render/painter';
 
-const BEST_SCORE_KEY = 'pigeon_fountain_best_score_v1';
-
-function readBestScore(): number {
-  try {
-    const raw = window.localStorage.getItem(BEST_SCORE_KEY);
-    if (!raw) return 0;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-  } catch {
-    return 0;
-  }
+function hitRect(
+  pt: { x: number; y: number },
+  rect: { x: number; y: number; w: number; h: number },
+): boolean {
+  return pt.x >= rect.x && pt.x <= rect.x + rect.w && pt.y >= rect.y && pt.y <= rect.y + rect.h;
 }
 
-function writeBestScore(score: number): void {
-  try {
-    window.localStorage.setItem(BEST_SCORE_KEY, String(Math.max(0, Math.floor(score))));
-  } catch {
-    // Ignore storage errors in restricted contexts
-  }
+function hitCircle(
+  pt: { x: number; y: number },
+  circle: { x: number; y: number; r: number },
+  pad = 6,
+): boolean {
+  return Math.hypot(pt.x - circle.x, pt.y - circle.y) <= circle.r + pad;
 }
 
 function main(): void {
@@ -41,16 +48,19 @@ function main(): void {
   const debugMode = params.get('debug') === '1';
 
   const sound = new SoundEngine();
-  let world = new PigeonFountainWorld(tuning);
-  let bestScore = readBestScore();
-  let screenMode: 'title' | 'playing' | 'result' = 'title';
+  let progress = readProgress();
+  let gameMode: GameMode = 'stage';
+  let selectedStageId: StageId = 1;
+  let world = new PigeonFountainWorld(gameMode, selectedStageId, tuning);
+  let screenMode: ScreenMode = 'title';
   let animTimeSec = 0;
   let soakAudioAcc = 0;
 
-  let movePointerId: number | null = null;
-  let movePointerSide: -1 | 0 | 1 = 0;
+  // Dual-thumb pointer tracking: movement pointers stored independently from skill taps
+  const movePointers = new Map<number, { dir: -1 | 1; zoneOnly: boolean }>();
   const heldKeys = new Set<string>();
   let bumpQueued = false;
+  let jumpQueued = false;
   let dpr = 1;
 
   function resizeCanvas(): void {
@@ -83,26 +93,54 @@ function main(): void {
   }
 
   function clearInputs(): void {
-    movePointerId = null;
-    movePointerSide = 0;
+    movePointers.clear();
     heldKeys.clear();
     bumpQueued = false;
+    jumpQueued = false;
   }
 
-  function startNewGame(): void {
+  function syncPreviewWorld(): void {
+    world = new PigeonFountainWorld(gameMode, selectedStageId, tuning);
+  }
+
+  function startNewGame(mode: GameMode = gameMode, stageId: StageId = selectedStageId): void {
     sound.unlock();
-    world = new PigeonFountainWorld(tuning);
+    gameMode = mode;
+    selectedStageId = stageId;
+    world = new PigeonFountainWorld(mode, stageId, tuning);
     soakAudioAcc = 0;
     clearInputs();
     screenMode = 'playing';
+  }
+
+  function returnToHome(): void {
+    clearInputs();
+    syncPreviewWorld();
+    screenMode = 'title';
+  }
+
+  function togglePause(): void {
+    if (screenMode === 'playing') {
+      clearInputs();
+      screenMode = 'paused';
+      sound.playUiClick();
+    } else if (screenMode === 'paused') {
+      clearInputs();
+      screenMode = 'playing';
+      sound.playUiClick();
+    }
   }
 
   function computeMoveDir(): -1 | 0 | 1 {
     let dir = 0;
     if (heldKeys.has('KeyA') || heldKeys.has('ArrowLeft')) dir -= 1;
     if (heldKeys.has('KeyD') || heldKeys.has('ArrowRight')) dir += 1;
-    if (dir === 0 && movePointerId !== null) {
-      dir = movePointerSide;
+    if (dir === 0 && movePointers.size > 0) {
+      let latestDir: -1 | 1 = 1;
+      for (const entry of movePointers.values()) {
+        latestDir = entry.dir;
+      }
+      dir = latestDir;
     }
     if (dir < 0) return -1;
     if (dir > 0) return 1;
@@ -114,69 +152,186 @@ function main(): void {
     const pt = toLogicalCoords(e.clientX, e.clientY);
 
     if (screenMode === 'title') {
-      if (pt.x >= 64 && pt.x <= tuning.view.width - 64 && pt.y >= 422 && pt.y <= 474) {
-        startNewGame();
+      const ui = tuning.ui.title;
+      if (hitRect(pt, ui.modeStageBtn)) {
+        gameMode = 'stage';
+        syncPreviewWorld();
+        sound.playUiClick();
+        return;
+      }
+      if (hitRect(pt, ui.modeEndlessBtn)) {
+        gameMode = 'endless';
+        syncPreviewWorld();
+        sound.playUiClick();
+        return;
+      }
+      if (gameMode === 'stage') {
+        const ids: StageId[] = [1, 2, 3, 4];
+        for (let i = 0; i < ids.length; i++) {
+          const sx = ui.stageCardStartX + i * (ui.stageCardW + ui.stageCardGap);
+          const cardRect = { x: sx, y: ui.stageCardY, w: ui.stageCardW, h: ui.stageCardH };
+          if (hitRect(pt, cardRect) && ids[i] <= progress.unlockedStage) {
+            selectedStageId = ids[i];
+            syncPreviewWorld();
+            sound.playUiClick();
+            return;
+          }
+        }
+      }
+      if (hitRect(pt, ui.startBtn)) {
+        sound.playUiClick();
+        startNewGame(gameMode, selectedStageId);
+      }
+      return;
+    }
+
+    if (screenMode === 'paused') {
+      const ui = tuning.ui.pause;
+      if (hitRect(pt, ui.resumeBtn)) {
+        togglePause();
+      } else if (hitRect(pt, ui.restartBtn)) {
+        sound.playUiClick();
+        startNewGame(gameMode, selectedStageId);
+      } else if (hitRect(pt, ui.homeBtn)) {
+        sound.playUiClick();
+        returnToHome();
       }
       return;
     }
 
     if (screenMode === 'result') {
-      if (pt.x >= 64 && pt.x <= tuning.view.width - 64 && pt.y >= 446 && pt.y <= 498) {
-        startNewGame();
+      const ui = tuning.ui.result;
+      const stageCleared =
+        world.match.mode === 'stage' &&
+        evaluateStageStars(world.match.score, world.match.endReason, STAGES[world.match.stageId]) >= 1;
+      const hasNext = stageCleared && world.match.stageId < 4;
+
+      if (hasNext && hitRect(pt, ui.primaryBtn)) {
+        sound.playUiClick();
+        startNewGame('stage', (world.match.stageId + 1) as StageId);
+        return;
+      }
+
+      const leftBtn = hasNext ? ui.secondaryLeftBtn : ui.soloLeftBtn;
+      const rightBtn = hasNext ? ui.secondaryRightBtn : ui.soloRightBtn;
+      if (hitRect(pt, leftBtn)) {
+        sound.playUiClick();
+        startNewGame(gameMode, selectedStageId);
+      } else if (hitRect(pt, rightBtn)) {
+        sound.playUiClick();
+        returnToHome();
       }
       return;
     }
 
-    // Top-right mute toggle
-    if (Math.hypot(pt.x - (tuning.view.width - 36), pt.y - 38) <= 20) {
+    // Playing state: HUD buttons
+    if (hitCircle(pt, tuning.ui.hud.muteBtn, 6)) {
       sound.muted = !sound.muted;
       return;
     }
+    if (hitCircle(pt, tuning.ui.hud.pauseBtn, 6)) {
+      togglePause();
+      return;
+    }
 
-    // Bottom center "肥臀猛顶" button
-    const btn = tuning.scene.bumpButton;
-    if (
-      Math.abs(pt.x - btn.x) <= btn.width / 2 + 8 &&
-      Math.abs(pt.y - btn.y) <= btn.height / 2 + 8
-    ) {
+    // Right-thumb skill buttons (do NOT overwrite left-thumb movement!)
+    if (hitCircle(pt, tuning.ui.controls.jumpBtn, 8)) {
+      jumpQueued = true;
+      return;
+    }
+    if (hitCircle(pt, tuning.ui.controls.bumpBtn, 8)) {
       bumpQueued = true;
       return;
     }
 
-    // Left / right movement hold
-    movePointerId = e.pointerId;
-    movePointerSide = pt.x < tuning.view.width / 2 ? -1 : 1;
-    try {
-      canvas.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignore synthetic pointer events
+    // Left-thumb directional buttons
+    if (hitCircle(pt, tuning.ui.controls.leftBtn, 8)) {
+      movePointers.set(e.pointerId, { dir: -1, zoneOnly: false });
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore synthetic pointer events
+      }
+      return;
+    }
+    if (hitCircle(pt, tuning.ui.controls.rightBtn, 8)) {
+      movePointers.set(e.pointerId, { dir: 1, zoneOnly: false });
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore synthetic pointer events
+      }
+      return;
+    }
+
+    // Fallback: mid/upper-canvas left/right hold
+    if (pt.y < 516) {
+      movePointers.set(e.pointerId, { dir: pt.x < tuning.view.width / 2 ? -1 : 1, zoneOnly: true });
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore synthetic pointer events
+      }
     }
   }
 
   function onPointerMove(e: PointerEvent): void {
-    if (screenMode !== 'playing' || movePointerId !== e.pointerId) return;
+    if (screenMode !== 'playing') return;
+    const entry = movePointers.get(e.pointerId);
+    if (!entry) return;
     const pt = toLogicalCoords(e.clientX, e.clientY);
-    movePointerSide = pt.x < tuning.view.width / 2 ? -1 : 1;
+    if (entry.zoneOnly) {
+      entry.dir = pt.x < tuning.view.width / 2 ? -1 : 1;
+    } else if (hitCircle(pt, tuning.ui.controls.leftBtn, 14)) {
+      entry.dir = -1;
+    } else if (hitCircle(pt, tuning.ui.controls.rightBtn, 14)) {
+      entry.dir = 1;
+    }
   }
 
   function onPointerEnd(e: PointerEvent): void {
-    if (movePointerId !== e.pointerId) return;
-    movePointerId = null;
-    movePointerSide = 0;
+    movePointers.delete(e.pointerId);
   }
 
   function onKeyDown(e: KeyboardEvent): void {
-    if (['ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space'].includes(e.code)) {
       e.preventDefault();
     }
 
     if (screenMode === 'title' && (e.code === 'Space' || e.code === 'Enter')) {
-      startNewGame();
+      startNewGame(gameMode, selectedStageId);
       return;
     }
 
-    if (screenMode === 'result' && (e.code === 'KeyR' || e.code === 'Enter')) {
-      startNewGame();
+    if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) {
+      if (screenMode === 'playing' || screenMode === 'paused') {
+        togglePause();
+        return;
+      }
+    }
+
+    if (screenMode === 'paused') {
+      if (e.code === 'KeyR' && !e.repeat) {
+        startNewGame(gameMode, selectedStageId);
+      } else if (e.code === 'Enter' && !e.repeat) {
+        togglePause();
+      }
+      return;
+    }
+
+    if (screenMode === 'result') {
+      if (e.code === 'KeyR' && !e.repeat) {
+        startNewGame(gameMode, selectedStageId);
+      } else if (e.code === 'Enter' && !e.repeat) {
+        const stageCleared =
+          world.match.mode === 'stage' &&
+          evaluateStageStars(world.match.score, world.match.endReason, STAGES[world.match.stageId]) >= 1;
+        if (stageCleared && world.match.stageId < 4) {
+          startNewGame('stage', (world.match.stageId + 1) as StageId);
+        } else {
+          startNewGame(gameMode, selectedStageId);
+        }
+      }
       return;
     }
 
@@ -185,6 +340,8 @@ function main(): void {
     sound.unlock();
     if (e.code === 'Space' && !e.repeat) {
       bumpQueued = true;
+    } else if ((e.code === 'KeyW' || e.code === 'ArrowUp') && !e.repeat) {
+      jumpQueued = true;
     } else if (
       e.code === 'KeyA' ||
       e.code === 'ArrowLeft' ||
@@ -209,7 +366,12 @@ function main(): void {
   window.addEventListener('blur', clearInputs);
   window.addEventListener('resize', resizeCanvas);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) clearInputs();
+    if (document.hidden) {
+      clearInputs();
+      if (screenMode === 'playing') {
+        screenMode = 'paused';
+      }
+    }
   });
 
   resizeCanvas();
@@ -218,37 +380,54 @@ function main(): void {
   let accumulatorMs = 0;
 
   function stepSimulation(dtMs: number): void {
+    if (!shouldAdvanceSimulation(screenMode)) return;
+
     const dtSec = dtMs / 1000;
     animTimeSec += dtSec;
 
-    if (screenMode !== 'playing') return;
-
     const moveDir = computeMoveDir();
     const doBump = bumpQueued;
+    const doJump = jumpQueued;
     bumpQueued = false;
+    jumpQueued = false;
 
-    const events = world.step(moveDir, doBump, dtMs);
+    const events = world.step(
+      { moveDir, bumpPressed: doBump, jumpPressed: doJump },
+      dtMs,
+    );
 
     if (events.bumpedHit || events.bumpedWhiff) {
       sound.playBump(events.bumpedHit);
     }
-    if (events.enteredPhase === 'WARNING') {
-      sound.playBubble();
-    } else if (events.enteredPhase === 'ACTIVE') {
-      sound.playFountainStart();
-    } else if (events.enteredPhase === 'SURGE_WARN') {
-      sound.playSurgeWarn();
-    } else if (events.enteredPhase === 'SURGE') {
-      sound.playSurgeBlast();
+    if (events.jumped) {
+      sound.playJump();
+    }
+    if (events.slammed) {
+      sound.playButtSlam();
+    }
+    if (events.propSmashed) {
+      sound.playPropSmash();
+    }
+    if (events.cornPickedUp) {
+      sound.playCornPickup();
+    }
+    if (events.redCrestCharged) {
+      sound.playRedCrestCharge();
+    }
+    for (const phase of events.enteredPhases) {
+      if (phase === 'WARNING') sound.playBubble();
+      else if (phase === 'ACTIVE') sound.playFountainStart();
+      else if (phase === 'SURGE_WARN') sound.playSurgeWarn();
+      else if (phase === 'SURGE') sound.playSurgeBlast();
     }
     if (events.playerHitBySurge) {
       sound.playLaunchSquawk(false);
     }
-    if (events.aiHitBySurge) {
+    if (events.aiHitBySurge || events.angledCannonLaunch) {
       sound.playLaunchSquawk(true);
     }
 
-    if (events.occupant === 'player' && world.match.fountain.phase === 'ACTIVE') {
+    if (events.occupant === 'player') {
       soakAudioAcc += dtSec;
       if (soakAudioAcc >= 0.42) {
         soakAudioAcc = 0;
@@ -261,10 +440,17 @@ function main(): void {
     if (world.match.finished) {
       screenMode = 'result';
       clearInputs();
-      if (world.match.score > bestScore) {
-        bestScore = Math.floor(world.match.score);
-        writeBestScore(bestScore);
+      if (world.match.mode === 'stage') {
+        const stars = evaluateStageStars(
+          world.match.score,
+          world.match.endReason,
+          STAGES[world.match.stageId],
+        );
+        progress = applyStageCompletion(progress, world.match.stageId, world.match.score, stars);
+      } else {
+        progress = applyEndlessCompletion(progress, world.match.score);
       }
+      writeProgress(progress);
     }
   }
 
@@ -278,6 +464,11 @@ function main(): void {
       accumulatorMs -= tuning.loop.fixedDtMs;
     }
 
+    if (screenMode === 'title') {
+      animTimeSec += elapsed / 1000;
+    }
+
+    const activeDir = computeMoveDir();
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawGameFrame(
@@ -285,10 +476,14 @@ function main(): void {
       world,
       {
         screenMode,
-        bestScore,
+        gameMode,
+        selectedStageId,
+        progress,
         muted: sound.muted,
         debug: debugMode,
         animTimeSec,
+        leftPressed: activeDir === -1,
+        rightPressed: activeDir === 1,
       },
       tuning,
     );

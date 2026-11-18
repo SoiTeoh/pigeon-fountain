@@ -1,20 +1,53 @@
-import { tuning, type Tuning } from '../config/tuning';
+import {
+  ENDLESS_STAGE,
+  STAGES,
+  tuning,
+  type AiArchetype,
+  type PropKind,
+  type StageConfig,
+  type StagePropPlacement,
+  type Tuning,
+} from '../config/tuning';
+import type { GameMode, StageId } from '../platform/storage';
 
+export type ScreenMode = 'title' | 'playing' | 'paused' | 'result';
 export type FountainPhase = 'IDLE' | 'WARNING' | 'ACTIVE' | 'SURGE_WARN' | 'SURGE';
+export type FountainStyle = 'bubble' | 'angled';
 export type Occupant = 'player' | 'ai' | 'none';
-export type AiIntent = 'chase' | 'contest' | 'flee' | 'roam';
+export type AiIntent = 'chase' | 'contest' | 'flee' | 'roam' | 'stunned' | 'charge' | 'lunge';
+export type RedCrestPhase = 'idle' | 'charging' | 'lunging' | 'whiff_stun';
 
-export interface FountainState {
+export interface FountainSlotState {
+  readonly slotIndex: number;
+  readonly x: number;
   readonly phase: FountainPhase;
-  readonly slotIndex: 0 | 1 | 2;
   readonly phaseTimerSec: number;
+  readonly style: FountainStyle;
+  readonly tiltDeg: number;
   readonly lateralDir: -1 | 0 | 1;
   readonly lateralStrength: number;
   readonly lateralTimerSec: number;
   readonly willSurge: boolean;
 }
 
+export interface PropState {
+  readonly id: string;
+  readonly kind: PropKind;
+  readonly label: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  readonly side: 'left' | 'right';
+  readonly elevated: boolean;
+  readonly bonus: number;
+  readonly intact: boolean;
+  readonly respawnTimerSec: number;
+}
+
 export interface MatchState {
+  readonly mode: GameMode;
+  readonly stageId: StageId;
   readonly remainingSec: number;
   readonly elapsedSec: number;
   readonly feathers: number;
@@ -23,30 +56,46 @@ export interface MatchState {
   readonly playerHoldSec: number;
   readonly maxCombo: 1 | 2 | 3;
   readonly sabotageCount: number;
-  readonly fountain: FountainState;
+  readonly propSmashCount: number;
+  readonly slamCount: number;
+  readonly nozzles: readonly FountainSlotState[];
+  readonly lastOpenedSlot: number;
+  readonly directorIdleSec: number;
+  readonly waveQueue: readonly number[];
+  readonly waveStaggerSec: number;
   readonly finished: boolean;
   readonly endReason: 'none' | 'feathers_zero' | 'time_up';
+}
+
+export interface RivalPositionSample {
+  readonly id: number;
+  readonly x: number;
+  readonly airborne: boolean;
 }
 
 export interface MatchStepInput {
   readonly dtSec: number;
   readonly playerX: number;
-  readonly aiX: number;
   readonly playerAirborne: boolean;
-  readonly aiAirborne: boolean;
+  readonly rivals: readonly RivalPositionSample[];
 }
 
 export interface MatchStepResult {
   readonly state: MatchState;
   readonly occupant: Occupant;
+  readonly occupiedSlotIndex: number | null;
   readonly combo: 1 | 2 | 3;
-  readonly enteredPhase: FountainPhase | null;
-  readonly playerHitBySurge: boolean;
-  readonly aiHitBySurge: boolean;
+  readonly enteredPhases: readonly FountainPhase[];
+  readonly playerHitBySurgeSlot: number | null;
+  readonly rivalsHitBySurge: readonly { rivalId: number; slotIndex: number }[];
 }
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+export function shouldAdvanceSimulation(screenMode: ScreenMode): boolean {
+  return screenMode === 'playing';
 }
 
 export function computeComboMultiplier(holdSec: number, t: Tuning = tuning): 1 | 2 | 3 {
@@ -55,32 +104,56 @@ export function computeComboMultiplier(holdSec: number, t: Tuning = tuning): 1 |
   return 1;
 }
 
-export function evaluateNozzleOccupant(
-  playerX: number,
-  aiX: number,
-  nozzleX: number,
-  playerAirborne: boolean,
-  aiAirborne: boolean,
-  coreRadiusPx: number,
-): Occupant {
-  const playerDist = playerAirborne ? Number.POSITIVE_INFINITY : Math.abs(playerX - nozzleX);
-  const aiDist = aiAirborne ? Number.POSITIVE_INFINITY : Math.abs(aiX - nozzleX);
+export function evaluateStageStars(
+  score: number,
+  endReason: MatchState['endReason'],
+  stage: StageConfig,
+): 0 | 1 | 2 | 3 {
+  if (endReason === 'feathers_zero') return 0;
+  const [s1, s2, s3] = stage.starThresholds;
+  if (score >= s3) return 3;
+  if (score >= s2) return 2;
+  if (score >= s1) return 1;
+  return 0;
+}
 
-  const playerIn = playerDist <= coreRadiusPx;
-  const aiIn = aiDist <= coreRadiusPx;
+export function getStageForMatch(mode: GameMode, stageId: StageId): StageConfig {
+  return mode === 'endless' ? ENDLESS_STAGE : STAGES[stageId];
+}
 
-  if (!playerIn && !aiIn) return 'none';
-  if (playerIn && !aiIn) return 'player';
-  if (!playerIn && aiIn) return 'ai';
-  return playerDist <= aiDist ? 'player' : 'ai';
+export function createInitialFountains(stage: StageConfig): FountainSlotState[] {
+  return stage.nozzleXs.map((x, slotIndex) => ({
+    slotIndex,
+    x,
+    phase: 'IDLE',
+    phaseTimerSec: 0,
+    style: 'bubble',
+    tiltDeg: 0,
+    lateralDir: 0,
+    lateralStrength: 0,
+    lateralTimerSec: 0,
+    willSurge: false,
+  }));
+}
+
+export function createInitialProps(stage: StageConfig): PropState[] {
+  return stage.props.map((p: StagePropPlacement) => ({
+    ...p,
+    intact: true,
+    respawnTimerSec: 0,
+  }));
 }
 
 export function createInitialMatchState(
+  mode: GameMode = 'stage',
+  stageId: StageId = 1,
   t: Tuning = tuning,
-  initialSlot: 0 | 1 | 2 = 1,
 ): MatchState {
+  const stage = getStageForMatch(mode, stageId);
   return {
-    remainingSec: t.scoring.roundDurationSec,
+    mode,
+    stageId,
+    remainingSec: stage.durationSec,
     elapsedSec: 0,
     feathers: t.scoring.maxFeathers,
     score: 0,
@@ -88,28 +161,68 @@ export function createInitialMatchState(
     playerHoldSec: 0,
     maxCombo: 1,
     sabotageCount: 0,
-    fountain: {
-      phase: 'IDLE',
-      slotIndex: initialSlot,
-      phaseTimerSec: t.fountain.idleMinSec,
-      lateralDir: 0,
-      lateralStrength: 0,
-      lateralTimerSec: 0,
-      willSurge: false,
-    },
+    propSmashCount: 0,
+    slamCount: 0,
+    nozzles: createInitialFountains(stage),
+    lastOpenedSlot: Math.floor(stage.nozzleXs.length / 2),
+    directorIdleSec: t.fountain.idleMinSec * 0.7,
+    waveQueue: [],
+    waveStaggerSec: 0,
     finished: false,
     endReason: 'none',
   };
 }
 
-function pickNextSlot(current: 0 | 1 | 2, rng: () => number): 0 | 1 | 2 {
-  const candidates = ([0, 1, 2] as const).filter((s) => s !== current);
-  const idx = Math.floor(clamp(rng(), 0, 0.9999) * candidates.length);
-  return candidates[idx];
+export function evaluateNozzleOccupant(
+  playerX: number,
+  rivalXs: readonly number[],
+  nozzleX: number,
+  playerAirborne: boolean,
+  rivalAirbornes: readonly boolean[],
+  coreRadiusPx: number,
+): Occupant {
+  const playerDist = playerAirborne ? Number.POSITIVE_INFINITY : Math.abs(playerX - nozzleX);
+  let bestAiDist = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < rivalXs.length; i++) {
+    if (rivalAirbornes[i]) continue;
+    const d = Math.abs(rivalXs[i] - nozzleX);
+    if (d < bestAiDist) bestAiDist = d;
+  }
+
+  const playerIn = playerDist <= coreRadiusPx;
+  const aiIn = bestAiDist <= coreRadiusPx;
+
+  if (!playerIn && !aiIn) return 'none';
+  if (playerIn && !aiIn) return 'player';
+  if (!playerIn && aiIn) return 'ai';
+  return playerDist <= bestAiDist ? 'player' : 'ai';
 }
 
 function randomRange(min: number, max: number, rng: () => number): number {
   return min + clamp(rng(), 0, 1) * (max - min);
+}
+
+function pickIdleSlot(
+  nozzles: readonly FountainSlotState[],
+  avoidSlot: number,
+  rng: () => number,
+): number | null {
+  const idle = nozzles.filter((n) => n.phase === 'IDLE' && n.slotIndex !== avoidSlot);
+  const pool = idle.length > 0 ? idle : nozzles.filter((n) => n.phase === 'IDLE');
+  if (pool.length === 0) return null;
+  const idx = Math.floor(clamp(rng(), 0, 0.9999) * pool.length);
+  return pool[idx].slotIndex;
+}
+
+function pickTiltDeg(slotX: number, t: Tuning, rng: () => number): number {
+  const mag = t.fountain.angledTiltDeg;
+  if (slotX < 175) {
+    return rng() < 0.78 ? mag : -mag;
+  }
+  if (slotX > 215) {
+    return rng() < 0.78 ? -mag : mag;
+  }
+  return rng() < 0.5 ? -mag : mag;
 }
 
 export function stepMatchState(
@@ -122,179 +235,282 @@ export function stepMatchState(
     return {
       state: prev,
       occupant: 'none',
+      occupiedSlotIndex: null,
       combo: computeComboMultiplier(prev.playerHoldSec, t),
-      enteredPhase: null,
-      playerHitBySurge: false,
-      aiHitBySurge: false,
+      enteredPhases: [],
+      playerHitBySurgeSlot: null,
+      rivalsHitBySurge: [],
     };
   }
 
+  const stage = getStageForMatch(prev.mode, prev.stageId);
   const dtSec = Math.max(0, input.dtSec);
   const nextElapsed = prev.elapsedSec + dtSec;
   const nextRemaining = Math.max(0, prev.remainingSec - dtSec);
 
-  let fountain = prev.fountain;
-  let timer = fountain.phaseTimerSec - dtSec;
-  let enteredPhase: FountainPhase | null = null;
-  let playerHitBySurge = false;
-  let aiHitBySurge = false;
+  const nozzles = prev.nozzles.map((n) => ({ ...n }));
+  const enteredPhases: FountainPhase[] = [];
+  let playerHitBySurgeSlot: number | null = null;
+  const rivalsHitBySurge: { rivalId: number; slotIndex: number }[] = [];
+
   let feathers = prev.feathers;
   let score = prev.score;
   let soakSec = prev.soakSec;
   let playerHoldSec = prev.playerHoldSec;
   let maxCombo = prev.maxCombo;
   let sabotageCount = prev.sabotageCount;
+  let lastOpenedSlot = prev.lastOpenedSlot;
+  let directorIdleSec = prev.directorIdleSec;
+  let waveQueue = [...prev.waveQueue];
+  let waveStaggerSec = prev.waveStaggerSec;
 
-  // Step lateral water pressure during ACTIVE
-  if (fountain.phase === 'ACTIVE') {
-    let latTimer = fountain.lateralTimerSec - dtSec;
-    let latDir = fountain.lateralDir;
-    let latStrength = fountain.lateralStrength;
-    if (latTimer <= 0) {
-      latDir = rng() < 0.5 ? -1 : 1;
-      latStrength = randomRange(t.fountain.lateralPushBase, t.fountain.lateralPushMax, rng);
-      latTimer = randomRange(t.fountain.lateralSwitchMinSec, t.fountain.lateralSwitchMaxSec, rng);
-    }
-    fountain = {
-      ...fountain,
-      lateralDir: latDir,
-      lateralStrength: latStrength,
-      lateralTimerSec: latTimer,
+  const endlessIntensity = prev.mode === 'endless' ? clamp(nextElapsed / 45, 0, 1) : 0;
+  const surgeChanceBase =
+    nextElapsed >= t.fountain.latePhaseSec ? stage.surgeChanceLate : stage.surgeChanceEarly;
+  const surgeChance = clamp(surgeChanceBase + endlessIntensity * 0.12, 0, 0.92);
+  const dualChance = clamp(stage.dualActiveChance + endlessIntensity * 0.2, 0, 0.9);
+  const angledChance = clamp(stage.angledChance + endlessIntensity * 0.12, 0, 0.75);
+
+  const openSlotToWarning = (slotIdx: number) => {
+    const slot = nozzles[slotIdx];
+    if (!slot || slot.phase !== 'IDLE') return;
+    nozzles[slotIdx] = {
+      ...slot,
+      phase: 'WARNING',
+      phaseTimerSec: t.fountain.warningSec,
+      style: 'bubble',
+      tiltDeg: 0,
+      lateralDir: 0,
+      lateralStrength: 0,
+      lateralTimerSec: 0,
+      willSurge: false,
     };
-  }
+    lastOpenedSlot = slotIdx;
+    enteredPhases.push('WARNING');
+  };
 
-  // Advance fountain state machine when phase timer expires
-  if (timer <= 0) {
-    switch (fountain.phase) {
-      case 'IDLE': {
-        const nextSlot = pickNextSlot(fountain.slotIndex, rng);
-        fountain = {
-          phase: 'WARNING',
-          slotIndex: nextSlot,
-          phaseTimerSec: t.fountain.warningSec,
-          lateralDir: 0,
-          lateralStrength: 0,
-          lateralTimerSec: 0,
-          willSurge: false,
-        };
-        enteredPhase = 'WARNING';
-        break;
-      }
-      case 'WARNING': {
-        const surgeChance =
-          nextElapsed >= t.fountain.latePhaseSec
-            ? t.fountain.lateSurgeChance
-            : t.fountain.earlySurgeChance;
-        const willSurge = rng() < surgeChance;
-        const latDir: -1 | 1 = rng() < 0.5 ? -1 : 1;
-        fountain = {
-          ...fountain,
-          phase: 'ACTIVE',
-          phaseTimerSec: randomRange(t.fountain.activeMinSec, t.fountain.activeMaxSec, rng),
-          lateralDir: latDir,
-          lateralStrength: randomRange(t.fountain.lateralPushBase, t.fountain.lateralPushMax, rng),
-          lateralTimerSec: randomRange(
-            t.fountain.lateralSwitchMinSec,
-            t.fountain.lateralSwitchMaxSec,
-            rng,
-          ),
-          willSurge,
-        };
-        enteredPhase = 'ACTIVE';
-        break;
-      }
-      case 'ACTIVE': {
-        if (fountain.willSurge) {
-          fountain = {
-            ...fountain,
-            phase: 'SURGE_WARN',
-            phaseTimerSec: t.fountain.surgeWarnSec,
-            lateralDir: 0,
-            lateralStrength: 0,
-          };
-          enteredPhase = 'SURGE_WARN';
+  // Step each active/warning/surge nozzle
+  for (let i = 0; i < nozzles.length; i++) {
+    let slot = nozzles[i];
+    if (slot.phase === 'IDLE') continue;
+
+    if (slot.phase === 'ACTIVE') {
+      let latTimer = slot.lateralTimerSec - dtSec;
+      let latDir = slot.lateralDir;
+      let latStrength = slot.lateralStrength;
+      if (latTimer <= 0) {
+        if (slot.style === 'angled') {
+          latDir = slot.tiltDeg >= 0 ? 1 : -1;
+          latStrength = t.fountain.angledSlideAccel;
+          latTimer = 1.0;
         } else {
-          fountain = {
-            ...fountain,
-            phase: 'IDLE',
-            phaseTimerSec: randomRange(t.fountain.idleMinSec, t.fountain.idleMaxSec, rng),
+          latDir = rng() < 0.5 ? -1 : 1;
+          latStrength = randomRange(t.fountain.lateralPushBase, t.fountain.lateralPushMax, rng);
+          latTimer = randomRange(t.fountain.lateralSwitchMinSec, t.fountain.lateralSwitchMaxSec, rng);
+        }
+      }
+      slot = {
+        ...slot,
+        lateralDir: latDir,
+        lateralStrength: latStrength,
+        lateralTimerSec: latTimer,
+      };
+    }
+
+    const nextTimer = slot.phaseTimerSec - dtSec;
+    if (nextTimer <= 0) {
+      switch (slot.phase) {
+        case 'WARNING': {
+          const willSurge = rng() < surgeChance;
+          const isAngled = rng() < angledChance;
+          const style: FountainStyle = isAngled ? 'angled' : 'bubble';
+          const tiltDeg = isAngled ? pickTiltDeg(slot.x, t, rng) : 0;
+          const latDir: -1 | 1 =
+            style === 'angled' ? (tiltDeg >= 0 ? 1 : -1) : rng() < 0.5 ? -1 : 1;
+          const latStrength =
+            style === 'angled'
+              ? t.fountain.angledSlideAccel
+              : randomRange(t.fountain.lateralPushBase, t.fountain.lateralPushMax, rng);
+          slot = {
+            ...slot,
+            phase: 'ACTIVE',
+            phaseTimerSec: randomRange(t.fountain.activeMinSec, t.fountain.activeMaxSec, rng),
+            style,
+            tiltDeg,
+            lateralDir: latDir,
+            lateralStrength: latStrength,
+            lateralTimerSec: randomRange(
+              t.fountain.lateralSwitchMinSec,
+              t.fountain.lateralSwitchMaxSec,
+              rng,
+            ),
+            willSurge,
+          };
+          enteredPhases.push('ACTIVE');
+          break;
+        }
+        case 'ACTIVE': {
+          if (slot.willSurge) {
+            slot = {
+              ...slot,
+              phase: 'SURGE_WARN',
+              phaseTimerSec: t.fountain.surgeWarnSec,
+              lateralDir: 0,
+              lateralStrength: 0,
+            };
+            enteredPhases.push('SURGE_WARN');
+          } else {
+            slot = {
+              ...slot,
+              phase: 'IDLE',
+              phaseTimerSec: 0,
+              style: 'bubble',
+              tiltDeg: 0,
+              lateralDir: 0,
+              lateralStrength: 0,
+            };
+            enteredPhases.push('IDLE');
+          }
+          break;
+        }
+        case 'SURGE_WARN': {
+          slot = {
+            ...slot,
+            phase: 'SURGE',
+            phaseTimerSec: t.fountain.surgeDurationSec,
             lateralDir: 0,
             lateralStrength: 0,
           };
-          enteredPhase = 'IDLE';
-        }
-        break;
-      }
-      case 'SURGE_WARN': {
-        fountain = {
-          ...fountain,
-          phase: 'SURGE',
-          phaseTimerSec: t.fountain.surgeDurationSec,
-          lateralDir: 0,
-          lateralStrength: 0,
-        };
-        enteredPhase = 'SURGE';
+          enteredPhases.push('SURGE');
 
-        // Check who gets blasted by the super surge!
-        const nozzleX = t.scene.nozzles[fountain.slotIndex];
-        if (
-          !input.playerAirborne &&
-          Math.abs(input.playerX - nozzleX) <= t.fountain.coreRadiusPx + 4
-        ) {
-          playerHitBySurge = true;
-          feathers = Math.max(0, feathers - 1);
-          playerHoldSec = 0;
+          if (
+            !input.playerAirborne &&
+            playerHitBySurgeSlot === null &&
+            Math.abs(input.playerX - slot.x) <= t.fountain.coreRadiusPx + 4
+          ) {
+            playerHitBySurgeSlot = slot.slotIndex;
+            feathers = Math.max(0, feathers - 1);
+            playerHoldSec = 0;
+          }
+          for (const rival of input.rivals) {
+            if (
+              !rival.airborne &&
+              Math.abs(rival.x - slot.x) <= t.fountain.coreRadiusPx + 6 &&
+              !rivalsHitBySurge.some((r) => r.rivalId === rival.id)
+            ) {
+              rivalsHitBySurge.push({ rivalId: rival.id, slotIndex: slot.slotIndex });
+              sabotageCount += 1;
+              score += t.scoring.sabotageBonus;
+            }
+          }
+          break;
         }
-        if (!input.aiAirborne && Math.abs(input.aiX - nozzleX) <= t.fountain.coreRadiusPx + 6) {
-          aiHitBySurge = true;
-          sabotageCount += 1;
-          score += t.scoring.sabotageBonus;
+        case 'SURGE': {
+          slot = {
+            ...slot,
+            phase: 'IDLE',
+            phaseTimerSec: 0,
+            style: 'bubble',
+            tiltDeg: 0,
+            lateralDir: 0,
+            lateralStrength: 0,
+            willSurge: false,
+          };
+          enteredPhases.push('IDLE');
+          break;
         }
-        break;
       }
-      case 'SURGE': {
-        fountain = {
-          ...fountain,
-          phase: 'IDLE',
-          phaseTimerSec: randomRange(t.fountain.idleMinSec, t.fountain.idleMaxSec, rng),
-          lateralDir: 0,
-          lateralStrength: 0,
-          willSurge: false,
-        };
-        enteredPhase = 'IDLE';
-        break;
-      }
+    } else {
+      slot = {
+        ...slot,
+        phaseTimerSec: nextTimer,
+      };
     }
-  } else {
-    fountain = {
-      ...fountain,
-      phaseTimerSec: timer,
-    };
+    nozzles[i] = slot;
   }
 
-  // Evaluate occupancy & soaking score during ACTIVE
-  const nozzleX = t.scene.nozzles[fountain.slotIndex];
+  // Handle wave queue staggered launches (Stage 4 & Endless)
+  if (waveQueue.length > 0) {
+    waveStaggerSec -= dtSec;
+    if (waveStaggerSec <= 0) {
+      const nextWaveSlot = waveQueue.shift();
+      if (nextWaveSlot !== undefined) {
+        openSlotToWarning(nextWaveSlot);
+      }
+      waveStaggerSec = t.fountain.waveStaggerSec;
+    }
+  }
+
+  // Director: open new nozzle(s) if none are busy
+  const busyCount = nozzles.filter((n) => n.phase !== 'IDLE').length;
+  if (busyCount === 0 && waveQueue.length === 0) {
+    directorIdleSec -= dtSec;
+    if (directorIdleSec <= 0) {
+      if (stage.waveMode && nozzles.length >= 4 && rng() < 0.55) {
+        const leftToRight = rng() < 0.5;
+        const order = leftToRight
+          ? [0, 2, 4].filter((idx) => idx < nozzles.length)
+          : [nozzles.length - 1, Math.max(0, nozzles.length - 3), 0];
+        const uniqueOrder = Array.from(new Set(order));
+        openSlotToWarning(uniqueOrder[0]);
+        waveQueue = uniqueOrder.slice(1);
+        waveStaggerSec = t.fountain.waveStaggerSec;
+      } else {
+        const first = pickIdleSlot(nozzles, lastOpenedSlot, rng);
+        if (first !== null) {
+          openSlotToWarning(first);
+          if (nozzles.length >= 4 && rng() < dualChance) {
+            const second = pickIdleSlot(nozzles, first, rng);
+            if (second !== null && second !== first) {
+              openSlotToWarning(second);
+            }
+          }
+        }
+      }
+      directorIdleSec = randomRange(t.fountain.idleMinSec, t.fountain.idleMaxSec, rng);
+    }
+  }
+
+  // Evaluate multi-nozzle occupancy during ACTIVE
+  const rivalXs = input.rivals.map((r) => r.x);
+  const rivalAirbornes = input.rivals.map((r) => r.airborne);
   let occupant: Occupant = 'none';
-  if (fountain.phase === 'ACTIVE') {
-    occupant = evaluateNozzleOccupant(
+  let occupiedSlotIndex: number | null = null;
+  let bestPlayerDist = Number.POSITIVE_INFINITY;
+
+  for (const nozzle of nozzles) {
+    if (nozzle.phase !== 'ACTIVE') continue;
+    const occ = evaluateNozzleOccupant(
       input.playerX,
-      input.aiX,
-      nozzleX,
+      rivalXs,
+      nozzle.x,
       input.playerAirborne,
-      input.aiAirborne,
+      rivalAirbornes,
       t.fountain.coreRadiusPx,
     );
-    if (occupant === 'player') {
-      soakSec += dtSec;
-      playerHoldSec += dtSec;
-      const combo = computeComboMultiplier(playerHoldSec, t);
-      if (combo > maxCombo) maxCombo = combo;
-      score += t.scoring.basePointsPerSec * combo * dtSec;
-    } else {
+    if (occ === 'player') {
+      const dist = Math.abs(input.playerX - nozzle.x);
+      if (dist < bestPlayerDist) {
+        bestPlayerDist = dist;
+        occupant = 'player';
+        occupiedSlotIndex = nozzle.slotIndex;
+      }
+    } else if (occ === 'ai' && occupant === 'none') {
+      occupant = 'ai';
+    }
+  }
+
+  if (occupant === 'player') {
+    soakSec += dtSec;
+    playerHoldSec += dtSec;
+    const combo = computeComboMultiplier(playerHoldSec, t);
+    if (combo > maxCombo) maxCombo = combo;
+    score += t.scoring.basePointsPerSec * combo * dtSec;
+  } else {
+    const anyActive = nozzles.some((n) => n.phase === 'ACTIVE');
+    if (anyActive || nozzles.every((n) => n.phase === 'IDLE' || n.phase === 'SURGE')) {
       playerHoldSec = 0;
     }
-  } else if (fountain.phase === 'IDLE' || fountain.phase === 'SURGE') {
-    playerHoldSec = 0;
   }
 
   const combo = computeComboMultiplier(playerHoldSec, t);
@@ -310,6 +526,8 @@ export function stepMatchState(
 
   return {
     state: {
+      mode: prev.mode,
+      stageId: prev.stageId,
       remainingSec: nextRemaining,
       elapsedSec: nextElapsed,
       feathers,
@@ -318,93 +536,374 @@ export function stepMatchState(
       playerHoldSec,
       maxCombo,
       sabotageCount,
-      fountain,
+      propSmashCount: prev.propSmashCount,
+      slamCount: prev.slamCount,
+      nozzles,
+      lastOpenedSlot,
+      directorIdleSec,
+      waveQueue,
+      waveStaggerSec,
       finished,
       endReason,
     },
     occupant,
+    occupiedSlotIndex,
     combo,
-    enteredPhase,
-    playerHitBySurge,
-    aiHitBySurge,
+    enteredPhases,
+    playerHitBySurgeSlot,
+    rivalsHitBySurge,
   };
 }
 
+export interface ParabolicLaunchInput {
+  readonly birdX: number;
+  readonly nozzleX: number;
+  readonly tiltDeg: number;
+  readonly fallbackDir: -1 | 1;
+}
+
+export function computeParabolicLaunchVelocity(
+  input: ParabolicLaunchInput,
+  t: Tuning = tuning,
+): { readonly vx: number; readonly vy: number } {
+  if (Math.abs(input.tiltDeg) >= 5) {
+    const rad = (input.tiltDeg * Math.PI) / 180;
+    const speed = t.fountain.angledCannonSpeed;
+    const offsetNudge = clamp((input.birdX - input.nozzleX) * 2.4, -55, 55);
+    return {
+      vx: Math.sin(rad) * speed + offsetNudge,
+      vy: -Math.cos(rad) * speed,
+    };
+  }
+
+  const dx = input.birdX - input.nozzleX;
+  const dir: -1 | 1 = Math.abs(dx) >= 3 ? (dx > 0 ? 1 : -1) : input.fallbackDir;
+  const offsetRatio = clamp(Math.abs(dx) / t.fountain.coreRadiusPx, 0.28, 1.15);
+  return {
+    vx: dir * (175 + offsetRatio * 145),
+    vy: -615,
+  };
+}
+
+export function checkPropHit(
+  birdX: number,
+  birdY: number,
+  birdRadius: number,
+  prop: PropState,
+): boolean {
+  if (!prop.intact) return false;
+  const pad = 6;
+  const left = prop.x - prop.w / 2 - pad;
+  const right = prop.x + prop.w / 2 + pad;
+  const top = prop.y - prop.h / 2 - pad;
+  const bottom = prop.y + prop.h / 2 + pad;
+  const cx = clamp(birdX, left, right);
+  const cy = clamp(birdY - 16, top, bottom);
+  const dx = birdX - cx;
+  const dy = birdY - 16 - cy;
+  return dx * dx + dy * dy <= birdRadius * birdRadius;
+}
+
+export interface ButtSlamEval {
+  readonly triggered: boolean;
+  readonly slotIndex: number | null;
+  readonly bonusScore: number;
+}
+
+export function evaluateButtSlam(
+  wasJumping: boolean,
+  vy: number,
+  playerX: number,
+  nozzles: readonly FountainSlotState[],
+  t: Tuning = tuning,
+): ButtSlamEval {
+  if (!wasJumping || vy <= 0) {
+    return { triggered: false, slotIndex: null, bonusScore: 0 };
+  }
+  for (const nozzle of nozzles) {
+    if (
+      nozzle.phase === 'ACTIVE' &&
+      Math.abs(playerX - nozzle.x) <= t.fountain.coreRadiusPx + 6
+    ) {
+      return {
+        triggered: true,
+        slotIndex: nozzle.slotIndex,
+        bonusScore: t.pigeon.slamScoreBonus,
+      };
+    }
+  }
+  return { triggered: false, slotIndex: null, bonusScore: 0 };
+}
+
 export interface AiDecisionInput {
+  readonly archetype: AiArchetype;
+  readonly birdIndex: number;
   readonly aiX: number;
   readonly playerX: number;
-  readonly fountain: FountainState;
+  readonly nozzles: readonly FountainSlotState[];
+  readonly stunTimerSec: number;
   readonly surgeReactElapsedSec: number;
+  readonly redCrestState: RedCrestPhase;
+  readonly redCrestTimerSec: number;
+  readonly redCrestCooldownSec: number;
+  readonly redCrestDir: -1 | 1;
   readonly elapsedSec: number;
+  readonly dtSec?: number;
 }
 
 export interface AiDecision {
   readonly moveDir: -1 | 0 | 1;
   readonly intent: AiIntent;
   readonly nextSurgeReactElapsedSec: number;
+  readonly nextRedCrestState: RedCrestPhase;
+  readonly nextRedCrestTimerSec: number;
+  readonly nextRedCrestCooldownSec: number;
+  readonly nextRedCrestDir: -1 | 1;
+  readonly speedMultiplier: number;
+  readonly startedCharge: boolean;
+}
+
+function findNearestNozzleByPhases(
+  aiX: number,
+  nozzles: readonly FountainSlotState[],
+  phases: readonly FountainPhase[],
+): FountainSlotState | null {
+  let best: FountainSlotState | null = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const n of nozzles) {
+    if (!phases.includes(n.phase)) continue;
+    const d = Math.abs(n.x - aiX);
+    if (d < bestDist) {
+      bestDist = d;
+      best = n;
+    }
+  }
+  return best;
 }
 
 /**
- * 白胖鸽 AI 纯决策逻辑：
- * - WARNING / ACTIVE 时积极抢占或挤开黑鸽；
- * - SURGE_WARN 时存在反应延迟（aiReactionDelaySec），保留玩家"肥臀猛顶"把白鸽留进喷口的喜剧窗口。
+ * Pure AI decision logic for all 3 bird archetypes:
+ * - Hit-stun (`stunTimerSec > 0`) freezes active AI movement and surge fleeing.
+ * - `SURGE_WARN` keeps ~0.36s derpy reaction delay before fleeing.
+ * - `red_crest` charges for 0.60s and lunges; whiffing triggers 0.75s recovery stun.
  */
 export function decideAiMove(input: AiDecisionInput, t: Tuning = tuning): AiDecision {
-  const nozzleX = t.scene.nozzles[input.fountain.slotIndex];
+  const dt = input.dtSec ?? t.loop.fixedDtMs / 1000;
+  const nextCooldown = Math.max(0, input.redCrestCooldownSec - dt);
 
-  if (input.fountain.phase === 'SURGE_WARN') {
-    const nextReact = input.surgeReactElapsedSec + t.loop.fixedDtMs / 1000;
+  // 1. Stunned from player's 肥臀猛顶 or 铁臀墩坐 shockwave: freeze AI!
+  if (input.stunTimerSec > 0) {
+    return {
+      moveDir: 0,
+      intent: 'stunned',
+      nextSurgeReactElapsedSec: input.surgeReactElapsedSec,
+      nextRedCrestState: 'idle',
+      nextRedCrestTimerSec: 0,
+      nextRedCrestCooldownSec: nextCooldown,
+      nextRedCrestDir: input.redCrestDir,
+      speedMultiplier: 1,
+      startedCharge: false,
+    };
+  }
+
+  // 2. Red-crest special charge/lunge state machine
+  if (input.archetype === 'red_crest') {
+    if (input.redCrestState === 'whiff_stun') {
+      const rem = Math.max(0, input.redCrestTimerSec - dt);
+      return {
+        moveDir: 0,
+        intent: 'stunned',
+        nextSurgeReactElapsedSec: input.surgeReactElapsedSec,
+        nextRedCrestState: rem > 0 ? 'whiff_stun' : 'idle',
+        nextRedCrestTimerSec: rem,
+        nextRedCrestCooldownSec: nextCooldown,
+        nextRedCrestDir: input.redCrestDir,
+        speedMultiplier: 1,
+        startedCharge: false,
+      };
+    }
+
+    if (input.redCrestState === 'charging') {
+      const rem = input.redCrestTimerSec - dt;
+      if (rem <= 0) {
+        return {
+          moveDir: input.redCrestDir,
+          intent: 'lunge',
+          nextSurgeReactElapsedSec: 0,
+          nextRedCrestState: 'lunging',
+          nextRedCrestTimerSec: t.pigeon.redCrestLungeSec,
+          nextRedCrestCooldownSec: t.pigeon.redCrestCooldownSec,
+          nextRedCrestDir: input.redCrestDir,
+          speedMultiplier: t.pigeon.redCrestLungeSpeed / t.pigeon.redCrestMaxSpeed,
+          startedCharge: false,
+        };
+      }
+      return {
+        moveDir: 0,
+        intent: 'charge',
+        nextSurgeReactElapsedSec: 0,
+        nextRedCrestState: 'charging',
+        nextRedCrestTimerSec: rem,
+        nextRedCrestCooldownSec: nextCooldown,
+        nextRedCrestDir: input.redCrestDir,
+        speedMultiplier: 0,
+        startedCharge: false,
+      };
+    }
+
+    if (input.redCrestState === 'lunging') {
+      const rem = input.redCrestTimerSec - dt;
+      if (rem <= 0) {
+        const hitPlayer = Math.abs(input.playerX - input.aiX) <= 44;
+        return {
+          moveDir: 0,
+          intent: hitPlayer ? 'contest' : 'stunned',
+          nextSurgeReactElapsedSec: 0,
+          nextRedCrestState: hitPlayer ? 'idle' : 'whiff_stun',
+          nextRedCrestTimerSec: hitPlayer ? 0 : t.pigeon.redCrestWhiffStunSec,
+          nextRedCrestCooldownSec: t.pigeon.redCrestCooldownSec,
+          nextRedCrestDir: input.redCrestDir,
+          speedMultiplier: 1,
+          startedCharge: false,
+        };
+      }
+      return {
+        moveDir: input.redCrestDir,
+        intent: 'lunge',
+        nextSurgeReactElapsedSec: 0,
+        nextRedCrestState: 'lunging',
+        nextRedCrestTimerSec: rem,
+        nextRedCrestCooldownSec: nextCooldown,
+        nextRedCrestDir: input.redCrestDir,
+        speedMultiplier: t.pigeon.redCrestLungeSpeed / t.pigeon.redCrestMaxSpeed,
+        startedCharge: false,
+      };
+    }
+  }
+
+  // 3. Check if standing near a SURGE_WARN nozzle
+  const dangerNozzle = findNearestNozzleByPhases(input.aiX, input.nozzles, ['SURGE_WARN']);
+  if (dangerNozzle && Math.abs(input.aiX - dangerNozzle.x) <= t.fountain.coreRadiusPx + 16) {
+    const nextReact = input.surgeReactElapsedSec + dt;
     if (nextReact >= t.pigeon.aiReactionDelaySec) {
-      // Flee away from the dangerous nozzle toward the center/opposite side
       const fleeDir: -1 | 1 =
-        input.aiX < nozzleX ? -1 : input.aiX > nozzleX ? 1 : nozzleX >= 195 ? -1 : 1;
+        input.aiX < dangerNozzle.x
+          ? -1
+          : input.aiX > dangerNozzle.x
+            ? 1
+            : dangerNozzle.x >= 195
+              ? -1
+              : 1;
       return {
         moveDir: fleeDir,
         intent: 'flee',
         nextSurgeReactElapsedSec: nextReact,
+        nextRedCrestState: 'idle',
+        nextRedCrestTimerSec: 0,
+        nextRedCrestCooldownSec: nextCooldown,
+        nextRedCrestDir: input.redCrestDir,
+        speedMultiplier: 1,
+        startedCharge: false,
       };
     }
-    // Still oblivious during reaction delay: keeps holding near nozzle!
-    const dx = nozzleX - input.aiX;
+    const dx = dangerNozzle.x - input.aiX;
     return {
       moveDir: Math.abs(dx) > 6 ? (dx > 0 ? 1 : -1) : 0,
       intent: 'contest',
       nextSurgeReactElapsedSec: nextReact,
+      nextRedCrestState: 'idle',
+      nextRedCrestTimerSec: 0,
+      nextRedCrestCooldownSec: nextCooldown,
+      nextRedCrestDir: input.redCrestDir,
+      speedMultiplier: 1,
+      startedCharge: false,
     };
   }
 
-  if (input.fountain.phase === 'WARNING' || input.fountain.phase === 'ACTIVE') {
-    const dxToNozzle = nozzleX - input.aiX;
+  // 4. Red-crest triggers charge when near player
+  if (
+    input.archetype === 'red_crest' &&
+    nextCooldown <= 0 &&
+    Math.abs(input.playerX - input.aiX) <= t.pigeon.redCrestTriggerDist &&
+    Math.abs(input.playerX - input.aiX) >= 34
+  ) {
+    const dir: -1 | 1 = input.playerX >= input.aiX ? 1 : -1;
+    return {
+      moveDir: 0,
+      intent: 'charge',
+      nextSurgeReactElapsedSec: 0,
+      nextRedCrestState: 'charging',
+      nextRedCrestTimerSec: t.pigeon.redCrestChargeSec,
+      nextRedCrestCooldownSec: t.pigeon.redCrestCooldownSec,
+      nextRedCrestDir: dir,
+      speedMultiplier: 0,
+      startedCharge: true,
+    };
+  }
+
+  // 5. Chase or contest ACTIVE / WARNING nozzles
+  const targetNozzle = findNearestNozzleByPhases(input.aiX, input.nozzles, [
+    'ACTIVE',
+    'WARNING',
+  ]);
+  if (targetNozzle) {
+    const flockOffset = input.archetype === 'sparrow' ? (input.birdIndex % 2 === 0 ? -10 : 10) : 0;
+    const dxToNozzle = targetNozzle.x + flockOffset - input.aiX;
     if (Math.abs(dxToNozzle) > 8) {
       return {
         moveDir: dxToNozzle > 0 ? 1 : -1,
         intent: 'chase',
         nextSurgeReactElapsedSec: 0,
+        nextRedCrestState: 'idle',
+        nextRedCrestTimerSec: 0,
+        nextRedCrestCooldownSec: nextCooldown,
+        nextRedCrestDir: input.redCrestDir,
+        speedMultiplier: 1,
+        startedCharge: false,
       };
     }
-    // Near the nozzle: nudge slightly toward center or against player if contesting
-    const playerNear = Math.abs(input.playerX - nozzleX) < t.fountain.coreRadiusPx + 14;
+
+    const playerNear = Math.abs(input.playerX - targetNozzle.x) < t.fountain.coreRadiusPx + 14;
     if (playerNear) {
       const pushDir: -1 | 1 = input.playerX > input.aiX ? 1 : -1;
       return {
         moveDir: pushDir,
         intent: 'contest',
         nextSurgeReactElapsedSec: 0,
+        nextRedCrestState: 'idle',
+        nextRedCrestTimerSec: 0,
+        nextRedCrestCooldownSec: nextCooldown,
+        nextRedCrestDir: input.redCrestDir,
+        speedMultiplier: 1,
+        startedCharge: false,
       };
     }
+
     return {
       moveDir: 0,
       intent: 'contest',
       nextSurgeReactElapsedSec: 0,
+      nextRedCrestState: 'idle',
+      nextRedCrestTimerSec: 0,
+      nextRedCrestCooldownSec: nextCooldown,
+      nextRedCrestDir: input.redCrestDir,
+      speedMultiplier: 1,
+      startedCharge: false,
     };
   }
 
-  // IDLE / SURGE: roam gently near center grate
-  const patrolTarget = 195 + Math.sin(input.elapsedSec * 1.4) * 55;
+  // 6. Gentle roam during IDLE / SURGE
+  const patrolTarget = 195 + Math.sin(input.elapsedSec * 1.4 + input.birdIndex * 1.9) * 60;
   const dx = patrolTarget - input.aiX;
   return {
     moveDir: Math.abs(dx) > 10 ? (dx > 0 ? 1 : -1) : 0,
     intent: 'roam',
     nextSurgeReactElapsedSec: 0,
+    nextRedCrestState: 'idle',
+    nextRedCrestTimerSec: 0,
+    nextRedCrestCooldownSec: nextCooldown,
+    nextRedCrestDir: input.redCrestDir,
+    speedMultiplier: 1,
+    startedCharge: false,
   };
 }
