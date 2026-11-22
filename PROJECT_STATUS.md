@@ -2,33 +2,36 @@
 
 ## 1. 项目定位
 
-Idea Lab v2 — Project 02：基于 **Vite + TypeScript (strict) + 原生 HTML5 Canvas 2D + Web Audio API** 的轻量级竖屏街机物理喜剧小游戏（全 UI 绘制于单张 `<canvas id="stage">` 内，面向后续微信小游戏移植保持零外部依赖与接口解耦）。
+Idea Lab v2 — Project 02：基于 **Vite + TypeScript (strict) + Matter.js + 原生 HTML5 Canvas 2D + Web Audio API** 的竖屏物理弹射喜剧小游戏（全 UI 绘制于单张 `<canvas id="stage">` 内，已合并 V2.0 街机版至 `main` 并打标 `v2.0-arcade`；当前分支 **`prototype/fountain-launch`** 推进全新弹射占座路线）。
 
 ## 2. 当前开发阶段
 
-- **V2.0 Phase 1（`v2.0-arcade`）实机录屏体验与全量自动化验收均已完成**。
-- 已完成 4 关闯关霸占 + 60s 无尽广场大乱斗全部实测，并修复实机录屏发现的第 4 关结算页重复「再来一局 (R)」按钮与封面 4 位数高分与星星行距过近问题。
-- 已打标 `v2.0-arcade` 并准备接入个人博客 `IDEA LAB / 003` 上线部署。
+- **`prototype/fountain-launch` 阶段 1（首章完整 6 关 + 第 2 角色「胖大肥」+ 喜剧残局拍立得）开发与本地自动化验收已完成**。
+- 暂未合并到 `main` 或推送，待真人试玩首章 6 关手感后决定调参或合并发布。
 
-## 3. 已实现功能（V2.0 Phase 1）
+## 3. 已实现功能（`prototype/fountain-launch` 阶段 1）
 
-- `src/platform/storage.ts`：独立轻量存储接口层（`StorageBackend` 默认封装 `localStorage`，支持关卡解锁、1~3 星通关评价、无尽模式最高分及 v1 历史最高分迁移，方便后续直接替换为微信 `wx` 存储 API）。
-- `src/config/tuning.ts`：集中配置 `390×640` 逻辑视口、`1000/60 ms` 固定步长、4 大主题关卡（`350 / 650 / 950 / 1300` 分，50s）与无尽模式（60s，道具 8s 补新）、3 种 AI 竞争鸟类参数、32° 斜喷与波浪连环喷发参数、双拇指按钮热区与喜剧道具配置。
-- `src/game/rules.ts`：纯 TypeScript 状态机与规则引擎：
-  - 多喷口调度（单喷、双喷、32° 偏心斜喷、Stage 4 波浪式连环喷发、`SURGE_WARN` -> `SURGE`）。
-  - 冷却文案改为 `"回气中..."`，猛顶命中赋予对手 `0.60s` 眩晕硬直并保留约 `0.36s` 暴走反应延迟。
-  - 「小跳墩坐 (`W`)」（冷却 `0.9s`）与空中落入喷水核心区触发「铁臀墩坐！+30」判定。
-  - 抛物线炮弹发射矢量计算、道具碰撞检测、3 种 AI（`white_pigeon`、`sparrow`、`red_crest` 蓄力冲撞与扑空硬直）纯决策与暂停冻结检查。
-- `src/game/world.ts`：确定性 2D 街机物理步进器（双技能、多目标保龄球击退、跳越地面对手、斜喷炮弹发射、砸中道具 `0.07s` Hit-stop + 碎片爆破 + 瓜子摊火花、大妈闪亮玉米粒 `+45`、无尽模式 8s 道具补新）。
-- `src/game/audio.ts`：零依赖 Web Audio API 合成音效（小跳、铁臀墩坐砸水、木箱/纸杯/气球碎裂、玉米拾取与红冠鸽蓄力音效）。
-- `src/render/painter.ts`：全 Canvas 2D 绘制（4 大主题广场背景、32° 斜喷水柱、4 类喜剧道具、3 种竞争鸟类与 `> □ <` 眩晕星环、左下 `◀`/`▶` + 右下 `小跳`/`肥臀猛顶` 双拇指布局、顶部 HUD 含 `🔊`/`⏸`、封面模式/选关卡片、暂停弹窗、星级结算卡片与 `?debug=1` 叠层）。
-- `src/main.ts`：DPR 自适应、双拇指独立多指针管理（零冲突）、键盘 `A/D/←/→/W/↑/Space/Esc/P/R/Enter` 支持及暂停完全冻结控制。
+- **阶段 0 录屏 3 项细节修复**：
+  - 封实第 2 关红砖墙与右侧水泥高台间的窄缝（零缝隙重叠），墙顶增设向左探出小雨棚檐突出「二段喷泉」路线；
+  - 仅当当前鸽子真正处于 `inTargetSeatZone` 时才显示 `稳住别滑出长椅…` 与绿色读秒环；
+  - 放宽「二段中继喷泉」感应半径至 `±38px`，支持边缘约 1/3 蹭入即触发二段冲天。
+- **双角色自由切换（每发前均可切换，每关共 3 发）**：
+  - **黑小坏（`black_bad`）**：均衡灵巧，空中点击/`Space` 触发 **「铁臀速降墩坐」**；
+  - **胖大肥（`fat_chonk`）**：大体型灰斑圆肚皮、高质量与高静摩擦，空中触发 **「泰山重磅压棚！」**（下落冲击力与震荡波翻倍，可压平弹性斜棚并轰飞重型红冠鸽）。
+- **首章「街角到广场」完整 6 关**（`src/config/launchStages.ts`）：
+  1. 第 1 关：街角宽长椅（★2：碰翻纸杯堆）
+  2. 第 2 关：高墙与二段喷泉（★2：撞飞霸座白鸽）
+  3. 第 3 关：纸杯塔保卫战（★2：纸杯一个不倒无损落座）
+  4. 第 4 关：翘起的遮阳棚（`Matter.Constraint` 弹性铰链斜棚，需胖大肥压平坐稳 `0.85s`）
+  5. 第 5 关：双路分叉（上路撞碎高架脆玻璃 vs 下路连续两口中继喷泉）
+  6. 第 6 关：网红奶茶摊招牌 Boss（白鸽 + 重型红冠大鸽双霸座，清场后霸占招牌）
+- **喜剧残局拍立得（`src/platform/snapshot.ts`）**：坐稳 `0.85s` 瞬间白光闪烁“咔嚓！”生成带印章与文案的拍立得缩略图，支持点击 **`📷 保存残局照片 (PNG)`** 导出下载。
+- **进度持久化（`src/platform/storage.ts`）**：保存首章 6 关解锁、1~3 星评价与最高分。
 
 ## 4. 最新自动化验证结果
 
 - `npm.cmd run typecheck`：通过（0 错误）。
-- `npm.cmd test`：1 个测试文件、35 项 Vitest 单元测试全部通过（`tests/rules.test.ts`）。
-- `npm.cmd run build`：通过（生成最新 `dist/`）。
+- `npm.cmd test`：2 个测试文件共 **61 项 Vitest 单元测试全部通过**（`tests/launchRules.test.ts` 26 项 + `tests/rules.test.ts` 35 项）。
+- `npm.cmd run build`：通过（`dist/index.html` 0.67 kB / `dist/assets/index-*.css` 0.49 kB / `dist/assets/index-*.js` ~148.7 kB，gzip ~45.4 kB）。
 - Playwright Chromium 三视口端到端验证（`360×640`、`390×844` 含 `?debug=1`、`1280×800`）：
-  - 均满足 `fitsViewport: true`、`overflow: false`、`pauseFrozen: true`。
-  - 覆盖封面 4 位数高分选关卡片排版、模式切换、开局移动、`小跳 (W)`、`肥臀猛顶 (Space)`、点击 `⏸` 暂停冻结并退出回主页，全程 0 控制台报错、0 页面异常、0 外部网络请求。
+  - 遍历点击 6 张关卡卡片、切换「胖大肥」、验证第 1 关与第 4 关物理运行及 `?debug=1` 叠层，全程 `fitsViewport: true`、`overflow: false`、0 控制台报错、0 页面异常、0 外部网络请求。

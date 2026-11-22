@@ -320,4 +320,86 @@ export class SoundEngine {
     osc.start(now);
     osc.stop(now + 0.31);
   }
+
+  playRelayBlast(): void {
+    const ctx = this.getCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // Psssh-BOOM water jet blast
+    const len = Math.floor(ctx.sampleRate * 0.38);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * 0.9;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(750, now);
+    filter.frequency.exponentialRampToValueAtTime(1900, now + 0.14);
+    filter.frequency.exponentialRampToValueAtTime(420, now + 0.38);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.start(now);
+
+    const osc = ctx.createOscillator();
+    const oGain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, now + 0.04);
+    osc.frequency.exponentialRampToValueAtTime(640, now + 0.22);
+    oGain.gain.setValueAtTime(0.15, now + 0.04);
+    oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    osc.connect(oGain).connect(ctx.destination);
+    osc.start(now + 0.04);
+    osc.stop(now + 0.25);
+  }
+
+  playSettleWin(): void {
+    const ctx = this.getCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((freq, i) => {
+      const t = now + i * 0.075;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.11, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.24);
+    });
+  }
+
+  playCameraShutter(): void {
+    const ctx = this.getCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const len = Math.floor(ctx.sampleRate * 0.08);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.015));
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(1600, now);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.22, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    src.connect(filter).connect(g).connect(ctx.destination);
+    src.start(now);
+  }
 }

@@ -146,3 +146,94 @@ export function applyEndlessCompletion(progress: PlayerProgress, score: number):
     endlessBestScore: Math.max(progress.endlessBestScore, cleanScore),
   };
 }
+
+export type LaunchChapterStageId = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface LaunchProgress {
+  readonly unlockedStage: LaunchChapterStageId;
+  readonly stars: Record<LaunchChapterStageId, 0 | 1 | 2 | 3>;
+  readonly bestScores: Record<LaunchChapterStageId, number>;
+}
+
+const LAUNCH_PROGRESS_KEY = 'pigeon_fountain_launch_ch1_v1';
+
+export function createInitialLaunchProgress(): LaunchProgress {
+  return {
+    unlockedStage: 1,
+    stars: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
+    bestScores: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
+  };
+}
+
+function clampLaunchStageId(raw: unknown): LaunchChapterStageId {
+  if (raw === 2 || raw === 3 || raw === 4 || raw === 5 || raw === 6) return raw;
+  return 1;
+}
+
+export function sanitizeLaunchProgress(raw: unknown): LaunchProgress {
+  const base = createInitialLaunchProgress();
+  if (!raw || typeof raw !== 'object') return base;
+  const obj = raw as Partial<LaunchProgress>;
+  return {
+    unlockedStage: clampLaunchStageId(obj.unlockedStage),
+    stars: {
+      1: clampStars(obj.stars?.[1]),
+      2: clampStars(obj.stars?.[2]),
+      3: clampStars(obj.stars?.[3]),
+      4: clampStars(obj.stars?.[4]),
+      5: clampStars(obj.stars?.[5]),
+      6: clampStars(obj.stars?.[6]),
+    },
+    bestScores: {
+      1: sanitizeScore(obj.bestScores?.[1]),
+      2: sanitizeScore(obj.bestScores?.[2]),
+      3: sanitizeScore(obj.bestScores?.[3]),
+      4: sanitizeScore(obj.bestScores?.[4]),
+      5: sanitizeScore(obj.bestScores?.[5]),
+      6: sanitizeScore(obj.bestScores?.[6]),
+    },
+  };
+}
+
+export function readLaunchProgress(backend: StorageBackend = browserStorage): LaunchProgress {
+  const raw = backend.getItem(LAUNCH_PROGRESS_KEY);
+  if (!raw) return createInitialLaunchProgress();
+  try {
+    return sanitizeLaunchProgress(JSON.parse(raw));
+  } catch {
+    return createInitialLaunchProgress();
+  }
+}
+
+export function writeLaunchProgress(
+  progress: LaunchProgress,
+  backend: StorageBackend = browserStorage,
+): void {
+  backend.setItem(LAUNCH_PROGRESS_KEY, JSON.stringify(progress));
+}
+
+export function applyLaunchStageCompletion(
+  progress: LaunchProgress,
+  stageId: LaunchChapterStageId,
+  score: number,
+  earnedStars: 0 | 1 | 2 | 3,
+): LaunchProgress {
+  const cleanScore = Math.max(0, Math.floor(score));
+  const nextStars = Math.max(progress.stars[stageId], earnedStars) as 0 | 1 | 2 | 3;
+  const nextUnlocked =
+    earnedStars >= 1 && stageId < 6 && progress.unlockedStage <= stageId
+      ? ((stageId + 1) as LaunchChapterStageId)
+      : progress.unlockedStage;
+
+  return {
+    unlockedStage: nextUnlocked,
+    stars: {
+      ...progress.stars,
+      [stageId]: nextStars,
+    },
+    bestScores: {
+      ...progress.bestScores,
+      [stageId]: Math.max(progress.bestScores[stageId], cleanScore),
+    },
+  };
+}
