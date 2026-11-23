@@ -28,7 +28,7 @@ export class SceneManager {
     if (extra.screenMode === 'title') {
       drawTitleOverlay(ctx, extra, t);
     } else if (extra.screenMode === 'paused') {
-      drawPauseOverlay(ctx, t);
+      drawPauseOverlay(ctx, extra, t);
     } else if (extra.screenMode === 'result') {
       drawResultOverlay(ctx, world, extra, t);
     }

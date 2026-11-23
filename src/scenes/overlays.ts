@@ -1,4 +1,5 @@
 import { STAGES, type Tuning } from '../config/tuning';
+import { showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
 import { evaluateStageStars } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
 import type { StageId } from '../platform/storage';
@@ -23,16 +24,16 @@ export function drawTitleOverlay(
   ctx.fillStyle = '#0f172a';
   ctx.font = '900 24px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('坏鸽子抢喷泉 V2.0', width / 2, 92);
+  ctx.fillText(STRINGS_ZH.title.heading, width / 2, 92);
 
   ctx.fillStyle = '#64748b';
   ctx.font = '600 12px sans-serif';
-  ctx.fillText('怒鸟式弹射破坏 · 双拇指抢泉大乱斗', width / 2, 118);
+  ctx.fillText(STRINGS_ZH.title.subtitle, width / 2, 118);
 
   // Mode toggle tabs
   for (const [btn, label, active] of [
-    [ui.modeStageBtn, '闯关霸占 (4关)', extra.gameMode === 'stage'],
-    [ui.modeEndlessBtn, '无尽大乱斗', extra.gameMode === 'endless'],
+    [ui.modeStageBtn, STRINGS_ZH.title.modeStage, extra.gameMode === 'stage'],
+    [ui.modeEndlessBtn, STRINGS_ZH.title.modeEndless, extra.gameMode === 'endless'],
   ] as const) {
     ctx.fillStyle = active ? '#0ea5e9' : '#f1f5f9';
     roundRect(ctx, btn.x, btn.y, btn.w, btn.h, btn.r);
@@ -128,11 +129,9 @@ export function drawTitleOverlay(
   }
 
   // Controls guide
-  const tips = [
-    ['◀ / ▶ 或 A/D', '抗住水压稳住屁股，最高 ×3 舒爽连击'],
-    ['小跳 (W)', '跳越对手躲红 !，落喷口触发「铁臀墩坐 +30」'],
-    ['肥臀猛顶 (Space)', '顶晕送进红 !/斜喷口，砸塌道具 +120！'],
-  ];
+  const tips = showKeyboardHints(extra.lastInputMethod)
+    ? STRINGS_ZH.title.tipsKeyboard
+    : STRINGS_ZH.title.tipsTouch;
   tips.forEach(([title, desc], idx) => {
     const ty = 376 + idx * 38;
     ctx.fillStyle = '#f1f5f9';
@@ -161,9 +160,16 @@ export function drawTitleOverlay(
   );
 }
 
-export function drawPauseOverlay(ctx: CanvasRenderingContext2D, t: Tuning): void {
+export function drawPauseOverlay(
+  ctx: CanvasRenderingContext2D,
+  extra: RenderExtra,
+  t: Tuning,
+): void {
   const { width, height } = t.view;
   const ui = t.ui.pause;
+  const restartLabel = showKeyboardHints(extra.lastInputMethod)
+    ? STRINGS_ZH.pause.restartKey
+    : STRINGS_ZH.pause.restartTouch;
 
   ctx.fillStyle = 'rgba(15, 23, 42, 0.68)';
   ctx.fillRect(0, 0, width, height);
@@ -176,12 +182,12 @@ export function drawPauseOverlay(ctx: CanvasRenderingContext2D, t: Tuning): void
   ctx.font = '900 22px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('⏸ 暂停抢泉', width / 2, 212);
+  ctx.fillText(STRINGS_ZH.pause.heading, width / 2, 212);
 
   for (const [btn, label, bg, fg] of [
-    [ui.resumeBtn, '继续抢泉', '#10b981', '#ffffff'],
-    [ui.restartBtn, '重开本局 (R)', '#f59e0b', '#0f172a'],
-    [ui.homeBtn, '退出回主页', '#e2e8f0', '#334155'],
+    [ui.resumeBtn, STRINGS_ZH.pause.resume, '#10b981', '#ffffff'],
+    [ui.restartBtn, restartLabel, '#f59e0b', '#0f172a'],
+    [ui.homeBtn, STRINGS_ZH.pause.home, '#e2e8f0', '#334155'],
   ] as const) {
     ctx.fillStyle = bg;
     roundRect(ctx, btn.x, btn.y, btn.w, btn.h, btn.r);
@@ -290,9 +296,13 @@ export function drawResultOverlay(
   const leftBtn = hasNextStage ? ui.secondaryLeftBtn : ui.soloLeftBtn;
   const rightBtn = hasNextStage ? ui.secondaryRightBtn : ui.soloRightBtn;
 
+  const replayLabel = showKeyboardHints(extra.lastInputMethod)
+    ? STRINGS_ZH.result.replayKey
+    : STRINGS_ZH.result.replayTouch;
+
   for (const [btn, label, bg, fg] of [
-    [leftBtn, '再来一局 (R)', hasNextStage ? '#f1f5f9' : '#10b981', hasNextStage ? '#0f172a' : '#ffffff'],
-    [rightBtn, '返回主页', '#e2e8f0', '#334155'],
+    [leftBtn, replayLabel, hasNextStage ? '#f1f5f9' : '#10b981', hasNextStage ? '#0f172a' : '#ffffff'],
+    [rightBtn, STRINGS_ZH.result.home, '#e2e8f0', '#334155'],
   ] as const) {
     ctx.fillStyle = bg;
     roundRect(ctx, btn.x, btn.y, btn.w, btn.h, btn.r);

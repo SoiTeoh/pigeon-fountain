@@ -1,4 +1,5 @@
 import type { Tuning } from '../config/tuning';
+import { showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
 import type { PigeonFountainWorld } from '../game/world';
 import { drawFeatherIcon, roundRect, type RenderExtra } from './shared';
 
@@ -171,34 +172,48 @@ export function drawHudAndControls(
     ctx.restore();
   }
 
-  // Subtle center key hint
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.font = '600 10.5px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('A/D 移动 · W 小跳 · Space 猛顶', 188, 624);
+  const showKeys = showKeyboardHints(extra.lastInputMethod);
 
-  // Jump button (小跳 W)
+  // Subtle center key hint (only when using keyboard)
+  if (showKeys) {
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '600 10.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(STRINGS_ZH.hud.keyboardHint, 188, 624);
+  }
+
+  // Jump button (小跳)
   const jumpCdRatio = world.player.jumpCooldownSec / t.pigeon.jumpCooldownSec;
   drawCircleSkillButton(ctx, {
     x: ctrl.jumpBtn.x,
     y: ctrl.jumpBtn.y,
     r: ctrl.jumpBtn.r,
-    title: '小跳',
-    subtitle: jumpCdRatio <= 0.001 ? '(W)' : '回气中...',
+    title: STRINGS_ZH.hud.jumpTitle,
+    subtitle:
+      jumpCdRatio <= 0.001
+        ? showKeys
+          ? STRINGS_ZH.hud.jumpReadyKey
+          : STRINGS_ZH.hud.jumpReadyTouch
+        : STRINGS_ZH.hud.cooling,
     cooldownRatio: jumpCdRatio,
     readyFill: '#38bdf8',
     readyStroke: '#bae6fd',
     textColor: '#0f172a',
   });
 
-  // Bump button (肥臀猛顶 Space) -> "回气中..." when cooling!
+  // Bump button (肥臀猛顶) -> "回气中..." when cooling!
   const bumpCdRatio = world.player.bumpCooldownSec / t.pigeon.bumpCooldownSec;
   drawCircleSkillButton(ctx, {
     x: ctrl.bumpBtn.x,
     y: ctrl.bumpBtn.y,
     r: ctrl.bumpBtn.r,
-    title: bumpCdRatio <= 0.001 ? '肥臀猛顶' : '回气中...',
-    subtitle: bumpCdRatio <= 0.001 ? '(Space)' : `${world.player.bumpCooldownSec.toFixed(1)}s`,
+    title: bumpCdRatio <= 0.001 ? STRINGS_ZH.hud.bumpTitle : STRINGS_ZH.hud.cooling,
+    subtitle:
+      bumpCdRatio <= 0.001
+        ? showKeys
+          ? STRINGS_ZH.hud.bumpReadyKey
+          : STRINGS_ZH.hud.bumpReadyTouch
+        : `${world.player.bumpCooldownSec.toFixed(1)}s`,
     cooldownRatio: bumpCdRatio,
     readyFill: '#f59e0b',
     readyStroke: '#fef08a',

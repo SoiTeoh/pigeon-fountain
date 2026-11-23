@@ -1,4 +1,5 @@
 import type { StageThemeId } from '../config/tuning';
+import type { InputMethod } from '../core/input';
 import type { ScreenMode } from '../game/rules';
 import type { GameMode, PlayerProgress, StageId } from '../platform/storage';
 
@@ -12,6 +13,7 @@ export interface RenderExtra {
   readonly animTimeSec: number;
   readonly leftPressed: boolean;
   readonly rightPressed: boolean;
+  readonly lastInputMethod: InputMethod;
 }
 
 export interface ThemePalette {

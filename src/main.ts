@@ -58,9 +58,11 @@ function main(): void {
   let soakAudioAcc = 0;
 
   // Unified input controller (touch + keyboard)
-  const inputController = new InputController(
-    typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0 ? 'touch' : 'keyboard',
-  );
+  const isTouchOrMobile =
+    typeof window !== 'undefined' &&
+    (window.innerWidth <= 768 ||
+      (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0));
+  const inputController = new InputController(isTouchOrMobile ? 'touch' : 'keyboard');
   let dpr = 1;
 
   function resizeCanvas(): void {
@@ -134,6 +136,9 @@ function main(): void {
 
   function onPointerDown(e: PointerEvent): void {
     sound.unlock();
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      inputController.setInputMethod('touch');
+    }
     const pt = toLogicalCoords(e.clientX, e.clientY);
 
     if (sceneManager.mode === 'title') {
@@ -289,6 +294,7 @@ function main(): void {
   }
 
   function onKeyDown(e: KeyboardEvent): void {
+    inputController.setInputMethod('keyboard');
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space'].includes(e.code)) {
       e.preventDefault();
     }
@@ -460,6 +466,7 @@ function main(): void {
         animTimeSec,
         leftPressed: activeDir === -1,
         rightPressed: activeDir === 1,
+        lastInputMethod: inputController.getLastInputMethod(),
       },
       tuning,
     );
