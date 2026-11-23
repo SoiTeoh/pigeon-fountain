@@ -5,7 +5,6 @@ import { SoundEngine } from './game/audio';
 import {
   evaluateStageStars,
   shouldAdvanceSimulation,
-  type ScreenMode,
 } from './game/rules';
 import { PigeonFountainWorld } from './game/world';
 import {
@@ -17,6 +16,7 @@ import {
   type StageId,
 } from './platform/storage';
 import { drawGameFrame } from './render/painter';
+import { SceneManager } from './scenes/manager';
 
 function hitRect(
   pt: { x: number; y: number },
@@ -53,7 +53,7 @@ function main(): void {
   let gameMode: GameMode = 'stage';
   let selectedStageId: StageId = 1;
   let world = new PigeonFountainWorld(gameMode, selectedStageId, tuning);
-  let screenMode: ScreenMode = 'title';
+  const sceneManager = new SceneManager('title');
   let animTimeSec = 0;
   let soakAudioAcc = 0;
 
@@ -107,23 +107,23 @@ function main(): void {
     world = new PigeonFountainWorld(mode, stageId, tuning);
     soakAudioAcc = 0;
     clearInputs();
-    screenMode = 'playing';
+    sceneManager.transitionTo('playing');
   }
 
   function returnToHome(): void {
     clearInputs();
     syncPreviewWorld();
-    screenMode = 'title';
+    sceneManager.transitionTo('title');
   }
 
   function togglePause(): void {
-    if (screenMode === 'playing') {
+    if (sceneManager.mode === 'playing') {
       clearInputs();
-      screenMode = 'paused';
+      sceneManager.transitionTo('paused');
       sound.playUiClick();
-    } else if (screenMode === 'paused') {
+    } else if (sceneManager.mode === 'paused') {
       clearInputs();
-      screenMode = 'playing';
+      sceneManager.transitionTo('playing');
       sound.playUiClick();
     }
   }
@@ -136,7 +136,7 @@ function main(): void {
     sound.unlock();
     const pt = toLogicalCoords(e.clientX, e.clientY);
 
-    if (screenMode === 'title') {
+    if (sceneManager.mode === 'title') {
       const ui = tuning.ui.title;
       if (hitRect(pt, ui.modeStageBtn)) {
         gameMode = 'stage';
@@ -170,7 +170,7 @@ function main(): void {
       return;
     }
 
-    if (screenMode === 'paused') {
+    if (sceneManager.mode === 'paused') {
       const ui = tuning.ui.pause;
       if (hitRect(pt, ui.resumeBtn)) {
         togglePause();
@@ -184,7 +184,7 @@ function main(): void {
       return;
     }
 
-    if (screenMode === 'result') {
+    if (sceneManager.mode === 'result') {
       const ui = tuning.ui.result;
       const stageCleared =
         world.match.mode === 'stage' &&
@@ -267,7 +267,7 @@ function main(): void {
   }
 
   function onPointerMove(e: PointerEvent): void {
-    if (screenMode !== 'playing') return;
+    if (sceneManager.mode !== 'playing') return;
     const entry = inputController.getMovePointer(e.pointerId);
     if (!entry) return;
     const pt = toLogicalCoords(e.clientX, e.clientY);
@@ -293,19 +293,19 @@ function main(): void {
       e.preventDefault();
     }
 
-    if (screenMode === 'title' && (e.code === 'Space' || e.code === 'Enter')) {
+    if (sceneManager.mode === 'title' && (e.code === 'Space' || e.code === 'Enter')) {
       startNewGame(gameMode, selectedStageId);
       return;
     }
 
     if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) {
-      if (screenMode === 'playing' || screenMode === 'paused') {
+      if (sceneManager.mode === 'playing' || sceneManager.mode === 'paused') {
         togglePause();
         return;
       }
     }
 
-    if (screenMode === 'paused') {
+    if (sceneManager.mode === 'paused') {
       if (e.code === 'KeyR' && !e.repeat) {
         startNewGame(gameMode, selectedStageId);
       } else if (e.code === 'Enter' && !e.repeat) {
@@ -314,7 +314,7 @@ function main(): void {
       return;
     }
 
-    if (screenMode === 'result') {
+    if (sceneManager.mode === 'result') {
       if (e.code === 'KeyR' && !e.repeat) {
         startNewGame(gameMode, selectedStageId);
       } else if (e.code === 'Enter' && !e.repeat) {
@@ -330,7 +330,7 @@ function main(): void {
       return;
     }
 
-    if (screenMode !== 'playing') return;
+    if (sceneManager.mode !== 'playing') return;
 
     sound.unlock();
     inputController.onKeyDown(e.code, e.repeat);
@@ -352,8 +352,8 @@ function main(): void {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       clearInputs();
-      if (screenMode === 'playing') {
-        screenMode = 'paused';
+      if (sceneManager.mode === 'playing') {
+        sceneManager.transitionTo('paused');
       }
     }
   });
@@ -364,7 +364,7 @@ function main(): void {
   let accumulatorMs = 0;
 
   function stepSimulation(dtMs: number): void {
-    if (!shouldAdvanceSimulation(screenMode)) return;
+    if (!shouldAdvanceSimulation(sceneManager.mode)) return;
 
     const dtSec = dtMs / 1000;
     animTimeSec += dtSec;
@@ -414,7 +414,7 @@ function main(): void {
     }
 
     if (world.match.finished) {
-      screenMode = 'result';
+      sceneManager.transitionTo('result');
       clearInputs();
       if (world.match.mode === 'stage') {
         const stars = evaluateStageStars(
@@ -440,7 +440,7 @@ function main(): void {
       accumulatorMs -= tuning.loop.fixedDtMs;
     }
 
-    if (screenMode === 'title') {
+    if (sceneManager.mode === 'title') {
       animTimeSec += elapsed / 1000;
     }
 
@@ -451,7 +451,7 @@ function main(): void {
       ctx,
       world,
       {
-        screenMode,
+        screenMode: sceneManager.mode,
         gameMode,
         selectedStageId,
         progress,
