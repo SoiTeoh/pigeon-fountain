@@ -6,6 +6,8 @@ Idea Lab v2 — Project 02：基于 **Vite + TypeScript (strict) + 原生 HTML5 
 
 ## 2. 当前开发阶段
 
+- **M0 打地基（纯重构阶段，进行中）**
+  - [x] M0-1：新建 `src/core/rng.ts`（Mulberry32 + 状态哈希），替换 `rules.ts` 与 `world.ts` 中的全部 `Math.random()`，新增 `tests/rng.test.ts` 确定性测试。
 - **V2.0 Phase 1（`v2.0-arcade`）实机录屏体验与全量自动化验收均已完成**。
 - 已完成 4 关闯关霸占 + 60s 无尽广场大乱斗全部实测，并修复实机录屏发现的第 4 关结算页重复「再来一局 (R)」按钮与封面 4 位数高分与星星行距过近问题。
 - 已打标 `v2.0-arcade` 并准备接入个人博客 `IDEA LAB / 003` 上线部署。

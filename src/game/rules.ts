@@ -8,6 +8,7 @@ import {
   type StagePropPlacement,
   type Tuning,
 } from '../config/tuning';
+import { mulberry32 } from '../core/rng';
 import type { GameMode, StageId } from '../platform/storage';
 
 export type ScreenMode = 'title' | 'playing' | 'paused' | 'result';
@@ -225,11 +226,13 @@ function pickTiltDeg(slotX: number, t: Tuning, rng: () => number): number {
   return rng() < 0.5 ? -mag : mag;
 }
 
+const defaultRulesRng = mulberry32(0x9e3779b9);
+
 export function stepMatchState(
   prev: MatchState,
   input: MatchStepInput,
   t: Tuning = tuning,
-  rng: () => number = Math.random,
+  rng: () => number = defaultRulesRng,
 ): MatchStepResult {
   if (prev.finished) {
     return {

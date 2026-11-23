@@ -5,6 +5,7 @@ import {
   type StageConfig,
   type Tuning,
 } from '../config/tuning';
+import { DEFAULT_SIM_SEED, hashState, mulberry32, normalizeSeed } from '../core/rng';
 import type { GameMode, StageId } from '../platform/storage';
 import {
   checkPropHit,
@@ -168,6 +169,7 @@ function createRivalBirds(stage: StageConfig, t: Tuning): RivalBird[] {
 export class PigeonFountainWorld {
   readonly t: Tuning;
   readonly stage: StageConfig;
+  readonly seed: number;
   match: MatchState;
   props: PropState[];
   player: PigeonBody & {
@@ -189,13 +191,23 @@ export class PigeonFountainWorld {
   hitStopTimerSec = 0;
   auntieNoticeTimerSec = 0;
 
+  private readonly simRng: () => number;
+  private readonly fxRng: () => number;
   private bubbleSpawnAcc = 0;
   private soakFxAcc = 0;
   private cornSpawnTimerSec = 6.5;
   private nextPickupId = 1;
 
-  constructor(mode: GameMode = 'stage', stageId: StageId = 1, t: Tuning = tuning) {
+  constructor(
+    mode: GameMode = 'stage',
+    stageId: StageId = 1,
+    t: Tuning = tuning,
+    seed: number = DEFAULT_SIM_SEED,
+  ) {
     this.t = t;
+    this.seed = normalizeSeed(seed);
+    this.simRng = mulberry32(this.seed);
+    this.fxRng = mulberry32(this.seed ^ 0xa5a5a5a5);
     this.stage = getStageForMatch(mode, stageId);
     this.match = createInitialMatchState(mode, stageId, t);
     this.props = createInitialProps(this.stage);
@@ -229,19 +241,19 @@ export class PigeonFountainWorld {
     speedMax: number,
   ): void {
     for (let i = 0; i < count; i++) {
-      const ang = -Math.PI + Math.random() * Math.PI;
-      const spd = speedMin + Math.random() * (speedMax - speedMin);
+      const ang = -Math.PI + this.fxRng() * Math.PI;
+      const spd = speedMin + this.fxRng() * (speedMax - speedMin);
       this.particles.push({
-        x: x + (Math.random() - 0.5) * 18,
-        y: y + (Math.random() - 0.5) * 10,
+        x: x + (this.fxRng() - 0.5) * 18,
+        y: y + (this.fxRng() - 0.5) * 10,
         vx: Math.cos(ang) * spd,
         vy: Math.sin(ang) * spd - 50,
-        r: kind.startsWith('feather') ? 5 + Math.random() * 4 : 3 + Math.random() * 3.5,
+        r: kind.startsWith('feather') ? 5 + this.fxRng() * 4 : 3 + this.fxRng() * 3.5,
         color,
         kind,
-        rot: Math.random() * Math.PI * 2,
-        vrot: (Math.random() - 0.5) * 12,
-        life: 0.65 + Math.random() * 0.5,
+        rot: this.fxRng() * Math.PI * 2,
+        vrot: (this.fxRng() - 0.5) * 12,
+        life: 0.65 + this.fxRng() * 0.5,
         maxLife: 1.15,
       });
     }
@@ -856,8 +868,8 @@ export class PigeonFountainWorld {
       if (this.cornSpawnTimerSec <= 0) {
         this.cornSpawnTimerSec = this.t.corn.spawnIntervalSec;
         const nozzle =
-          this.match.nozzles[Math.floor(Math.random() * this.match.nozzles.length)];
-        const offset = (Math.random() < 0.5 ? -1 : 1) * (16 + Math.random() * 20);
+          this.match.nozzles[Math.floor(this.simRng() * this.match.nozzles.length)];
+        const offset = (this.simRng() < 0.5 ? -1 : 1) * (16 + this.simRng() * 20);
         const targetX = clamp(
           nozzle.x + offset,
           this.t.scene.stageMinX + 10,
@@ -952,6 +964,7 @@ export class PigeonFountainWorld {
         })),
       },
       this.t,
+      this.simRng,
     );
     this.match = ruleRes.state;
     this.occupant = ruleRes.occupant;
@@ -1037,11 +1050,11 @@ export class PigeonFountainWorld {
       for (const n of this.match.nozzles) {
         if (n.phase === 'WARNING') {
           this.particles.push({
-            x: n.x + (Math.random() - 0.5) * 28,
+            x: n.x + (this.fxRng() - 0.5) * 28,
             y: this.t.scene.groundY - 4,
-            vx: (Math.random() - 0.5) * 24,
-            vy: -55 - Math.random() * 45,
-            r: 2.5 + Math.random() * 2.5,
+            vx: (this.fxRng() - 0.5) * 24,
+            vy: -55 - this.fxRng() * 45,
+            r: 2.5 + this.fxRng() * 2.5,
             color: '#e0f2fe',
             kind: 'water',
             rot: 0,
@@ -1052,11 +1065,11 @@ export class PigeonFountainWorld {
         } else if (n.phase === 'ACTIVE') {
           const rad = (n.tiltDeg * Math.PI) / 180;
           this.particles.push({
-            x: n.x + (Math.random() - 0.5) * 26,
-            y: this.t.scene.groundY - 42 - Math.random() * 25,
-            vx: Math.sin(rad) * 180 + n.lateralDir * 30 + (Math.random() - 0.5) * 55,
-            vy: -Math.cos(rad) * 125 - Math.random() * 60,
-            r: 2 + Math.random() * 2.5,
+            x: n.x + (this.fxRng() - 0.5) * 26,
+            y: this.t.scene.groundY - 42 - this.fxRng() * 25,
+            vx: Math.sin(rad) * 180 + n.lateralDir * 30 + (this.fxRng() - 0.5) * 55,
+            vy: -Math.cos(rad) * 125 - this.fxRng() * 60,
+            r: 2 + this.fxRng() * 2.5,
             color: '#bae6fd',
             kind: 'water',
             rot: 0,
@@ -1072,9 +1085,9 @@ export class PigeonFountainWorld {
     if (this.occupant === 'player' && this.soakFxAcc >= 0.38) {
       this.soakFxAcc = 0;
       this.particles.push({
-        x: this.player.x + (Math.random() - 0.5) * 20,
+        x: this.player.x + (this.fxRng() - 0.5) * 20,
         y: this.player.y - 42,
-        vx: (Math.random() - 0.5) * 20,
+        vx: (this.fxRng() - 0.5) * 20,
         vy: -45,
         r: 6,
         color: '#fb7185',
@@ -1101,5 +1114,21 @@ export class PigeonFountainWorld {
       occupant: this.occupant,
       combo: this.combo,
     };
+  }
+
+  getStateHash(): string {
+    return hashState({
+      seed: this.seed,
+      match: this.match,
+      player: this.player,
+      rivals: this.rivals,
+      props: this.props,
+      pickups: this.pickups,
+      occupant: this.occupant,
+      occupiedSlotIndex: this.occupiedSlotIndex,
+      combo: this.combo,
+      cornSpawnTimerSec: this.cornSpawnTimerSec,
+      nextPickupId: this.nextPickupId,
+    });
   }
 }
