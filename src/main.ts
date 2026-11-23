@@ -1,5 +1,6 @@
 import './style.css';
 import { STAGES, tuning } from './config/tuning';
+import { InputController, toWorldStepInput } from './core/input';
 import { SoundEngine } from './game/audio';
 import {
   evaluateStageStars,
@@ -56,11 +57,10 @@ function main(): void {
   let animTimeSec = 0;
   let soakAudioAcc = 0;
 
-  // Dual-thumb pointer tracking: movement pointers stored independently from skill taps
-  const movePointers = new Map<number, { dir: -1 | 1; zoneOnly: boolean }>();
-  const heldKeys = new Set<string>();
-  let bumpQueued = false;
-  let jumpQueued = false;
+  // Unified input controller (touch + keyboard)
+  const inputController = new InputController(
+    typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0 ? 'touch' : 'keyboard',
+  );
   let dpr = 1;
 
   function resizeCanvas(): void {
@@ -93,10 +93,7 @@ function main(): void {
   }
 
   function clearInputs(): void {
-    movePointers.clear();
-    heldKeys.clear();
-    bumpQueued = false;
-    jumpQueued = false;
+    inputController.clear();
   }
 
   function syncPreviewWorld(): void {
@@ -132,19 +129,7 @@ function main(): void {
   }
 
   function computeMoveDir(): -1 | 0 | 1 {
-    let dir = 0;
-    if (heldKeys.has('KeyA') || heldKeys.has('ArrowLeft')) dir -= 1;
-    if (heldKeys.has('KeyD') || heldKeys.has('ArrowRight')) dir += 1;
-    if (dir === 0 && movePointers.size > 0) {
-      let latestDir: -1 | 1 = 1;
-      for (const entry of movePointers.values()) {
-        latestDir = entry.dir;
-      }
-      dir = latestDir;
-    }
-    if (dir < 0) return -1;
-    if (dir > 0) return 1;
-    return 0;
+    return inputController.peekMoveAxis();
   }
 
   function onPointerDown(e: PointerEvent): void {
@@ -236,17 +221,17 @@ function main(): void {
 
     // Right-thumb skill buttons (do NOT overwrite left-thumb movement!)
     if (hitCircle(pt, tuning.ui.controls.jumpBtn, 8)) {
-      jumpQueued = true;
+      inputController.queueJump(e.pointerType);
       return;
     }
     if (hitCircle(pt, tuning.ui.controls.bumpBtn, 8)) {
-      bumpQueued = true;
+      inputController.queueAction(e.pointerType);
       return;
     }
 
     // Left-thumb directional buttons
     if (hitCircle(pt, tuning.ui.controls.leftBtn, 8)) {
-      movePointers.set(e.pointerId, { dir: -1, zoneOnly: false });
+      inputController.setMovePointer(e.pointerId, -1, false, pt.x, e.pointerType);
       try {
         canvas.setPointerCapture(e.pointerId);
       } catch {
@@ -255,7 +240,7 @@ function main(): void {
       return;
     }
     if (hitCircle(pt, tuning.ui.controls.rightBtn, 8)) {
-      movePointers.set(e.pointerId, { dir: 1, zoneOnly: false });
+      inputController.setMovePointer(e.pointerId, 1, false, pt.x, e.pointerType);
       try {
         canvas.setPointerCapture(e.pointerId);
       } catch {
@@ -266,7 +251,13 @@ function main(): void {
 
     // Fallback: mid/upper-canvas left/right hold
     if (pt.y < 516) {
-      movePointers.set(e.pointerId, { dir: pt.x < tuning.view.width / 2 ? -1 : 1, zoneOnly: true });
+      inputController.setMovePointer(
+        e.pointerId,
+        pt.x < tuning.view.width / 2 ? -1 : 1,
+        true,
+        pt.x,
+        e.pointerType,
+      );
       try {
         canvas.setPointerCapture(e.pointerId);
       } catch {
@@ -277,20 +268,24 @@ function main(): void {
 
   function onPointerMove(e: PointerEvent): void {
     if (screenMode !== 'playing') return;
-    const entry = movePointers.get(e.pointerId);
+    const entry = inputController.getMovePointer(e.pointerId);
     if (!entry) return;
     const pt = toLogicalCoords(e.clientX, e.clientY);
     if (entry.zoneOnly) {
-      entry.dir = pt.x < tuning.view.width / 2 ? -1 : 1;
+      inputController.updateMovePointer(
+        e.pointerId,
+        pt.x < tuning.view.width / 2 ? -1 : 1,
+        pt.x,
+      );
     } else if (hitCircle(pt, tuning.ui.controls.leftBtn, 14)) {
-      entry.dir = -1;
+      inputController.updateMovePointer(e.pointerId, -1, pt.x);
     } else if (hitCircle(pt, tuning.ui.controls.rightBtn, 14)) {
-      entry.dir = 1;
+      inputController.updateMovePointer(e.pointerId, 1, pt.x);
     }
   }
 
   function onPointerEnd(e: PointerEvent): void {
-    movePointers.delete(e.pointerId);
+    inputController.removeMovePointer(e.pointerId);
   }
 
   function onKeyDown(e: KeyboardEvent): void {
@@ -338,22 +333,11 @@ function main(): void {
     if (screenMode !== 'playing') return;
 
     sound.unlock();
-    if (e.code === 'Space' && !e.repeat) {
-      bumpQueued = true;
-    } else if ((e.code === 'KeyW' || e.code === 'ArrowUp') && !e.repeat) {
-      jumpQueued = true;
-    } else if (
-      e.code === 'KeyA' ||
-      e.code === 'ArrowLeft' ||
-      e.code === 'KeyD' ||
-      e.code === 'ArrowRight'
-    ) {
-      heldKeys.add(e.code);
-    }
+    inputController.onKeyDown(e.code, e.repeat);
   }
 
   function onKeyUp(e: KeyboardEvent): void {
-    heldKeys.delete(e.code);
+    inputController.onKeyUp(e.code);
   }
 
   canvas.addEventListener('pointerdown', onPointerDown);
@@ -385,16 +369,8 @@ function main(): void {
     const dtSec = dtMs / 1000;
     animTimeSec += dtSec;
 
-    const moveDir = computeMoveDir();
-    const doBump = bumpQueued;
-    const doJump = jumpQueued;
-    bumpQueued = false;
-    jumpQueued = false;
-
-    const events = world.step(
-      { moveDir, bumpPressed: doBump, jumpPressed: doJump },
-      dtMs,
-    );
+    const unifiedInput = inputController.consumeFrameInput();
+    const events = world.step(toWorldStepInput(unifiedInput), dtMs);
 
     if (events.bumpedHit || events.bumpedWhiff) {
       sound.playBump(events.bumpedHit);
