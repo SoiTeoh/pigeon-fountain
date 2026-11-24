@@ -185,6 +185,7 @@ export const tuning = {
   },
   plug: {
     coreRadiusPx: 20,
+    hintProximityPx: 120,
     maxDurationSec: 2.0,
     adjacentSurgeThresholdSec: 0.6,
     bigUltControlBonus: 8,

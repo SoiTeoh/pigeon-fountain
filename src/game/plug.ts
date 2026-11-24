@@ -1,5 +1,59 @@
 import { tuning, type Tuning } from '../config/tuning';
-import type { FountainSlotState } from './rules';
+import { clamp, type FountainSlotState } from './rules';
+
+export function predictLandingX(
+  x: number,
+  y: number,
+  vx: number,
+  vy: number,
+  t: Tuning = tuning,
+): number {
+  const g = t.pigeon.gravity;
+  const h = Math.max(0, t.scene.groundY - y);
+  const disc = Math.max(0, vy * vy + 2 * g * h);
+  const timeSec = (-vy + Math.sqrt(disc)) / g;
+  return clamp(x + vx * timeSec, t.scene.stageMinX, t.scene.stageMaxX);
+}
+
+export function findPredictedPlugNozzle(
+  x: number,
+  y: number,
+  vx: number,
+  vy: number,
+  airborne: boolean,
+  plugCooldownSec: number,
+  nozzles: readonly FountainSlotState[],
+  t: Tuning = tuning,
+): { landingX: number; nozzle: FountainSlotState | null } {
+  const landingX = predictLandingX(x, y, vx, vy, t);
+  if (!airborne || plugCooldownSec > 0) {
+    return { landingX, nozzle: null };
+  }
+  for (const nozzle of nozzles) {
+    if (
+      (nozzle.phase === 'IDLE' || nozzle.phase === 'WARNING') &&
+      Math.abs(landingX - nozzle.x) <= t.plug.coreRadiusPx
+    ) {
+      return { landingX, nozzle };
+    }
+  }
+  return { landingX, nozzle: null };
+}
+
+export function findNearbyPluggableNozzles(
+  playerX: number,
+  airborne: boolean,
+  plugCooldownSec: number,
+  nozzles: readonly FountainSlotState[],
+  t: Tuning = tuning,
+): FountainSlotState[] {
+  if (airborne || plugCooldownSec > 0) return [];
+  return nozzles.filter(
+    (n) =>
+      (n.phase === 'IDLE' || n.phase === 'WARNING') &&
+      Math.abs(playerX - n.x) <= t.plug.hintProximityPx,
+  );
+}
 
 export interface PlugState {
   readonly activeSlotIndex: number | null;

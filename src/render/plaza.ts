@@ -3,6 +3,74 @@ import type { FountainSlotState } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
 import { roundRect, THEME_PALETTES } from './shared';
 
+export function drawButtIcon(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale = 1,
+  alpha = 1,
+): void {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+
+  // Cute comic pigeon-butt sticker with 3px #2B2B3A outline
+  ctx.fillStyle = '#fde047';
+  ctx.strokeStyle = '#2B2B3A';
+  ctx.lineWidth = 2.6;
+
+  ctx.beginPath();
+  ctx.ellipse(-5.5, 0, 7.5, 6.2, -0.15, 0, Math.PI * 2);
+  ctx.ellipse(5.5, 0, 7.5, 6.2, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Center crease
+  ctx.beginPath();
+  ctx.moveTo(0, -4);
+  ctx.quadraticCurveTo(0, 1, 0, 5);
+  ctx.stroke();
+
+  // Down arrow indicator
+  ctx.fillStyle = '#f97316';
+  ctx.beginPath();
+  ctx.moveTo(-4, 8);
+  ctx.lineTo(4, 8);
+  ctx.lineTo(0, 13);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+export function drawLandingMarker(
+  ctx: CanvasRenderingContext2D,
+  landingX: number,
+  groundY: number,
+  canPlug: boolean,
+  animTimeSec: number,
+): void {
+  ctx.save();
+  if (canPlug) {
+    const pulse = 0.5 + 0.5 * Math.sin(animTimeSec * 18);
+    ctx.strokeStyle = `rgba(250, 204, 21, ${0.55 + pulse * 0.45})`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.ellipse(landingX, groundY - 2, 22 + pulse * 4, 7, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    drawButtIcon(ctx, landingX, groundY - 22 - pulse * 4, 1.05 + pulse * 0.15, 0.75 + pulse * 0.25);
+  } else {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.58)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.ellipse(landingX, groundY - 2, 16, 5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+
 export function drawPlazaBackground(
   ctx: CanvasRenderingContext2D,
   world: PigeonFountainWorld,

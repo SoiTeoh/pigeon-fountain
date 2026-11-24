@@ -1,5 +1,6 @@
 import type { AiArchetype, Tuning } from '../config/tuning';
 import { showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
+import { findPredictedPlugNozzle } from '../game/plug';
 import { computeControlRateMultiplier } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
 import { roundRect, type RenderExtra } from './shared';
@@ -315,6 +316,22 @@ export function drawHudAndControls(
     ctx.fillText(`舒爽 ×${mult}`, width - 50, 76);
   }
 
+  if (extra.plugHintText) {
+    ctx.save();
+    ctx.fillStyle = '#fde047';
+    ctx.strokeStyle = '#2B2B3A';
+    ctx.lineWidth = 3;
+    roundRect(ctx, width / 2 - 118, 96, 236, 30, 15);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '900 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(extra.plugHintText, width / 2, 111);
+    ctx.restore();
+  }
+
   if (extra.screenMode !== 'playing' && extra.screenMode !== 'paused') return;
 
   // Controls at bottom: classic 4-button vs default drag + single context action button
@@ -429,16 +446,35 @@ export function drawHudAndControls(
       ctx.restore();
     }
 
+    const airPred = world.player.airborne
+      ? findPredictedPlugNozzle(
+          world.player.x,
+          world.player.y,
+          world.player.vx,
+          world.player.vy,
+          world.player.airborne,
+          world.plug.cooldownSec,
+          world.match.nozzles,
+          t,
+        )
+      : null;
+    const airCanPlug = airPred?.nozzle !== null && world.player.airborne;
     const jumpCdRatio = world.player.airborne ? 0 : world.player.jumpCooldownSec / t.pigeon.jumpCooldownSec;
     drawCircleSkillButton(ctx, {
       x: ctrl.jumpBtn.x,
       y: ctrl.jumpBtn.y,
       r: ctrl.jumpBtn.r,
-      title: world.player.airborne ? STRINGS_ZH.hud.jumpAirTitle : STRINGS_ZH.hud.jumpTitle,
+      title: world.player.airborne
+        ? airCanPlug
+          ? STRINGS_ZH.hud.jumpAirPlugTitle
+          : STRINGS_ZH.hud.jumpAirTitle
+        : STRINGS_ZH.hud.jumpTitle,
       subtitle:
         jumpCdRatio <= 0.001
           ? world.player.airborne
-            ? '下墩'
+            ? airCanPlug
+              ? '快坐住!'
+              : '下墩'
             : showKeys
               ? STRINGS_ZH.hud.jumpReadyKey
               : STRINGS_ZH.hud.jumpReadyTouch

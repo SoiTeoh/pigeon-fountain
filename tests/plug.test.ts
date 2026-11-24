@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { tuning } from '../src/config/tuning';
 import {
   createInitialPlugState,
+  findNearbyPluggableNozzles,
   findPluggableNozzle,
+  findPredictedPlugNozzle,
+  predictLandingX,
   startPlugOnNozzle,
   stepPlugState,
 } from '../src/game/plug';
@@ -97,5 +100,18 @@ describe('game/plug fountain plugging', () => {
     const cooled = stepPlugState({ ...plug, cooldownSec: 3.0 }, base.nozzles, 100, false, 3.0, tuning);
     expect(cooled.nextPlug.cooldownSec).toBe(0);
     expect(findPluggableNozzle(base.nozzles[0].x, true, 200, cooled.nextPlug.cooldownSec, base.nozzles, tuning)?.slotIndex).toBe(0);
+  });
+
+  it('predicts airborne landingX and detects nearby pluggable nozzles', () => {
+    const base = createInitialMatchState('stage', 1, tuning);
+    const landingX = predictLandingX(105, tuning.scene.groundY - 40, 0, 100, tuning);
+    expect(landingX).toBe(105);
+
+    const pred = findPredictedPlugNozzle(105, tuning.scene.groundY - 40, 0, 100, true, 0, base.nozzles, tuning);
+    expect(pred.nozzle?.slotIndex).toBe(0);
+
+    const nearby = findNearbyPluggableNozzles(120, false, 0, base.nozzles, tuning);
+    expect(nearby.some((n) => n.slotIndex === 0)).toBe(true);
+    expect(nearby.some((n) => n.slotIndex === 1)).toBe(true);
   });
 });

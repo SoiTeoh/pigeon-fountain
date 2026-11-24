@@ -29,6 +29,8 @@ export const STRINGS_ZH = {
     bumpReadyKey: '(Space)',
     bumpReadyTouch: '猛顶',
     cooling: '回气中...',
+    plugGuideFirst: '跳起来，坐住空泉眼！',
+    plugSuccessFirst: '学会堵泉！旁边会炸！',
   },
   pause: {
     heading: '⏸ 暂停抢泉',

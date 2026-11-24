@@ -16,6 +16,7 @@ export interface RenderExtra {
   readonly lastInputMethod: InputMethod;
   readonly classicFourButtons: boolean;
   readonly joystick?: JoystickVisualState;
+  readonly plugHintText?: string | null;
 }
 
 export interface ThemePalette {

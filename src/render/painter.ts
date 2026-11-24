@@ -1,11 +1,18 @@
 import { tuning, type Tuning } from '../config/tuning';
+import { findNearbyPluggableNozzles, findPredictedPlugNozzle } from '../game/plug';
 import type { PigeonFountainWorld, RivalBird } from '../game/world';
 import { drawPauseOverlay, drawResultOverlay, drawTitleOverlay } from '../scenes/overlays';
 import { drawBird } from './actors/birds';
 import { computeCameraShake } from './camera';
 import { drawParticlesShockwavesAndFloats } from './fx/particles';
 import { drawDebugOverlay, drawHudAndControls } from './hud';
-import { drawPlazaBackground, drawPropsAndPickups, drawSingleFountainJet } from './plaza';
+import {
+  drawButtIcon,
+  drawLandingMarker,
+  drawPlazaBackground,
+  drawPropsAndPickups,
+  drawSingleFountainJet,
+} from './plaza';
 import type { RenderExtra } from './shared';
 
 export type { RenderExtra } from './shared';
@@ -41,6 +48,35 @@ export function drawGameFrame(
       isPlugged ? plugRatio : 0,
       isAdjacent ? plugRatio : 0,
     );
+  }
+
+  // Plugging discoverability: nearby idle/warning nozzles show bouncing butt icon; airborne shows landing prediction
+  if (extra.screenMode === 'playing' && world.plug.activeSlotIndex === null) {
+    if (world.player.airborne) {
+      const pred = findPredictedPlugNozzle(
+        world.player.x,
+        world.player.y,
+        world.player.vx,
+        world.player.vy,
+        world.player.airborne,
+        world.plug.cooldownSec,
+        world.match.nozzles,
+        t,
+      );
+      drawLandingMarker(ctx, pred.landingX, t.scene.groundY, pred.nozzle !== null, extra.animTimeSec);
+    } else {
+      const nearby = findNearbyPluggableNozzles(
+        world.player.x,
+        world.player.airborne,
+        world.plug.cooldownSec,
+        world.match.nozzles,
+        t,
+      );
+      const bob = Math.sin(extra.animTimeSec * 7) * 3;
+      for (const n of nearby) {
+        drawButtIcon(ctx, n.x, t.scene.groundY - 28 + bob, 0.85, 0.9);
+      }
+    }
   }
 
   for (const r of world.rivals) {

@@ -1,5 +1,6 @@
 import './style.css';
 import { STAGES, tuning } from './config/tuning';
+import { STRINGS_ZH } from './content/strings.zh';
 import { InputController, toWorldStepInput } from './core/input';
 import { ReplayRecorder } from './core/replay';
 import { generateRandomSeed } from './core/rng';
@@ -59,6 +60,9 @@ function main(): void {
   const sceneManager = new SceneManager('title');
   let animTimeSec = 0;
   let soakAudioAcc = 0;
+  let plugHintText: string | null = null;
+  let plugHintTimerSec = 0;
+  let plugGuideShownThisMatch = false;
 
   // Unified input controller (touch + keyboard)
   const isTouchOrMobile =
@@ -114,6 +118,9 @@ function main(): void {
     world = new PigeonFountainWorld(mode, stageId, tuning, matchSeed);
     replayRecorder = new ReplayRecorder(mode, stageId, matchSeed);
     soakAudioAcc = 0;
+    plugHintText = null;
+    plugHintTimerSec = 0;
+    plugGuideShownThisMatch = false;
     clearInputs();
     sceneManager.transitionTo('playing');
   }
@@ -402,6 +409,33 @@ function main(): void {
     replayRecorder?.recordFrame(unifiedInput);
     const events = world.step(toWorldStepInput(unifiedInput), dtMs);
 
+    if (plugHintTimerSec > 0) {
+      plugHintTimerSec = Math.max(0, plugHintTimerSec - dtSec);
+      if (plugHintTimerSec === 0) plugHintText = null;
+    }
+
+    if (
+      !plugGuideShownThisMatch &&
+      progress.plugSuccessCount < 3 &&
+      world.match.nozzles.some((n) => n.phase === 'IDLE' || n.phase === 'WARNING')
+    ) {
+      plugGuideShownThisMatch = true;
+      plugHintText = STRINGS_ZH.hud.plugGuideFirst;
+      plugHintTimerSec = 2.5;
+    }
+
+    if (events.plugStarted) {
+      if (progress.plugSuccessCount === 0) {
+        plugHintText = STRINGS_ZH.hud.plugSuccessFirst;
+        plugHintTimerSec = 2.5;
+      }
+      progress = {
+        ...progress,
+        plugSuccessCount: progress.plugSuccessCount + 1,
+      };
+      writeProgress(progress);
+    }
+
     if (events.bumpedHit || events.bumpedWhiff) {
       sound.playBump(events.bumpedHit);
     }
@@ -495,6 +529,7 @@ function main(): void {
         lastInputMethod: inputController.getLastInputMethod(),
         classicFourButtons: progress.classicFourButtons,
         joystick: inputController.getJoystickVisual(),
+        plugHintText,
       },
       tuning,
     );
