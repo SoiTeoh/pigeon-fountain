@@ -1,5 +1,5 @@
 import type { StageThemeId } from '../config/tuning';
-import type { InputMethod } from '../core/input';
+import type { InputMethod, JoystickVisualState } from '../core/input';
 import type { ScreenMode } from '../game/rules';
 import type { GameMode, PlayerProgress, StageId } from '../platform/storage';
 
@@ -15,6 +15,7 @@ export interface RenderExtra {
   readonly rightPressed: boolean;
   readonly lastInputMethod: InputMethod;
   readonly classicFourButtons: boolean;
+  readonly joystick?: JoystickVisualState;
 }
 
 export interface ThemePalette {

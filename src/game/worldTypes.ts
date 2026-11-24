@@ -89,6 +89,8 @@ export interface BonusPickup {
 
 export interface WorldStepInput {
   readonly moveDir: -1 | 0 | 1;
+  readonly moveScale?: number;
+  readonly stopOnRelease?: boolean;
   readonly bumpPressed: boolean;
   readonly jumpPressed: boolean;
   readonly slamPressed?: boolean;

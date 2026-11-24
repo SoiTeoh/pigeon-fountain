@@ -1,6 +1,6 @@
 import './style.css';
 import { STAGES, tuning } from './config/tuning';
-import { InputController, resolveContextAction, toWorldStepInput } from './core/input';
+import { InputController, toWorldStepInput } from './core/input';
 import { ReplayRecorder } from './core/replay';
 import { generateRandomSeed } from './core/rng';
 import { SoundEngine } from './game/audio';
@@ -237,17 +237,21 @@ function main(): void {
       return;
     }
 
+    const ctrl = tuning.ui.controls;
+    const hitPad = ctrl.buttonHitPadPx;
+    const rightZoneX = tuning.view.width * ctrl.dragZoneMaxXRatio;
+
     if (progress.classicFourButtons) {
       // Classic 4-button layout
-      if (hitCircle(pt, tuning.ui.controls.jumpBtn, 8)) {
-        inputController.queueJump(e.pointerType);
+      if (hitCircle(pt, ctrl.jumpBtn, hitPad)) {
+        inputController.tryTriggerButton(e.pointerId, 'jump', world.player.airborne, e.pointerType);
         return;
       }
-      if (hitCircle(pt, tuning.ui.controls.bumpBtn, 8)) {
-        inputController.queueAction(e.pointerType);
+      if (hitCircle(pt, ctrl.bumpBtn, hitPad)) {
+        inputController.tryTriggerButton(e.pointerId, 'bump', world.player.airborne, e.pointerType);
         return;
       }
-      if (hitCircle(pt, tuning.ui.controls.leftBtn, 8)) {
+      if (hitCircle(pt, ctrl.leftBtn, hitPad)) {
         inputController.setMovePointer(e.pointerId, -1, false, pt.x, e.pointerType);
         try {
           canvas.setPointerCapture(e.pointerId);
@@ -256,7 +260,7 @@ function main(): void {
         }
         return;
       }
-      if (hitCircle(pt, tuning.ui.controls.rightBtn, 8)) {
+      if (hitCircle(pt, ctrl.rightBtn, hitPad)) {
         inputController.setMovePointer(e.pointerId, 1, false, pt.x, e.pointerType);
         try {
           canvas.setPointerCapture(e.pointerId);
@@ -266,26 +270,26 @@ function main(): void {
         return;
       }
     } else {
-      // Default: Drag + single context action button
-      if (hitCircle(pt, tuning.ui.controls.actionBtn, 10)) {
-        const ctxKind = resolveContextAction(
-          world.player.x,
-          world.player.airborne,
-          world.rivals,
-          tuning,
-        );
-        if (ctxKind === 'slam') inputController.queueSlam(e.pointerType);
-        else if (ctxKind === 'bump') inputController.queueAction(e.pointerType);
-        else inputController.queueJump(e.pointerType);
+      // Right 40%: dual buttons only (no drag); Left 60% lower half: relative horizontal joystick
+      if (pt.x >= rightZoneX) {
+        if (hitCircle(pt, ctrl.bumpBtn, hitPad)) {
+          inputController.tryTriggerButton(e.pointerId, 'bump', world.player.airborne, e.pointerType);
+          return;
+        }
+        if (hitCircle(pt, ctrl.jumpBtn, hitPad)) {
+          inputController.tryTriggerButton(e.pointerId, 'jump', world.player.airborne, e.pointerType);
+          return;
+        }
         return;
       }
 
-      if (pt.y >= tuning.ui.controls.dragZoneMinY) {
-        inputController.setMovePointer(e.pointerId, 0, true, pt.x, e.pointerType);
-        try {
-          canvas.setPointerCapture(e.pointerId);
-        } catch {
-          // Ignore synthetic pointer events
+      if (pt.y >= ctrl.dragZoneMinY) {
+        if (inputController.startJoystick(e.pointerId, pt.x, pt.y, e.pointerType)) {
+          try {
+            canvas.setPointerCapture(e.pointerId);
+          } catch {
+            // Ignore synthetic pointer events
+          }
         }
         return;
       }
@@ -294,20 +298,21 @@ function main(): void {
 
   function onPointerMove(e: PointerEvent): void {
     if (sceneManager.mode !== 'playing') return;
+    const pt = toLogicalCoords(e.clientX, e.clientY);
+    if (inputController.updateJoystick(e.pointerId, pt.x, pt.y)) {
+      return;
+    }
     const entry = inputController.getMovePointer(e.pointerId);
     if (!entry) return;
-    const pt = toLogicalCoords(e.clientX, e.clientY);
-    if (entry.zoneOnly) {
-      inputController.updateMovePointer(e.pointerId, 0, pt.x);
-    } else if (hitCircle(pt, tuning.ui.controls.leftBtn, 14)) {
+    if (hitCircle(pt, tuning.ui.controls.leftBtn, tuning.ui.controls.buttonHitPadPx)) {
       inputController.updateMovePointer(e.pointerId, -1, pt.x);
-    } else if (hitCircle(pt, tuning.ui.controls.rightBtn, 14)) {
+    } else if (hitCircle(pt, tuning.ui.controls.rightBtn, tuning.ui.controls.buttonHitPadPx)) {
       inputController.updateMovePointer(e.pointerId, 1, pt.x);
     }
   }
 
   function onPointerEnd(e: PointerEvent): void {
-    inputController.removeMovePointer(e.pointerId);
+    inputController.endPointer(e.pointerId);
   }
 
   function onKeyDown(e: KeyboardEvent): void {
@@ -356,20 +361,7 @@ function main(): void {
     if (sceneManager.mode !== 'playing') return;
 
     sound.unlock();
-    if (e.code === 'Space' && !e.repeat && !progress.classicFourButtons) {
-      const ctxKind = resolveContextAction(
-        world.player.x,
-        world.player.airborne,
-        world.rivals,
-        tuning,
-      );
-      inputController.setInputMethod('keyboard');
-      if (ctxKind === 'slam') inputController.queueSlam();
-      else if (ctxKind === 'bump') inputController.queueAction();
-      else inputController.queueJump();
-      return;
-    }
-    inputController.onKeyDown(e.code, e.repeat);
+    inputController.onKeyDown(e.code, e.repeat, world.player.airborne);
   }
 
   function onKeyUp(e: KeyboardEvent): void {
@@ -385,6 +377,7 @@ function main(): void {
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', clearInputs);
   window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('contextmenu', (e) => e.preventDefault());
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       clearInputs();
@@ -501,6 +494,7 @@ function main(): void {
         rightPressed: activeDir === 1,
         lastInputMethod: inputController.getLastInputMethod(),
         classicFourButtons: progress.classicFourButtons,
+        joystick: inputController.getJoystickVisual(),
       },
       tuning,
     );

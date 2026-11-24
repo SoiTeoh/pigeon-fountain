@@ -1,32 +1,26 @@
 import { tuning, type Tuning } from '../config/tuning';
 import type { WorldStepInput } from '../game/world';
 
-export type ContextActionKind = 'bump' | 'jump' | 'slam';
-
-export function resolveContextAction(
-  playerX: number,
-  playerAirborne: boolean,
-  rivals: readonly { x: number; airborne: boolean; respawnTimerSec: number }[],
-  t: Tuning = tuning,
-): ContextActionKind {
-  if (playerAirborne) return 'slam';
-  const hasNearRival = rivals.some(
-    (r) =>
-      !r.airborne &&
-      r.respawnTimerSec <= 0 &&
-      Math.abs(r.x - playerX) <= t.pigeon.bumpReachPx,
-  );
-  return hasNearRival ? 'bump' : 'jump';
-}
-
 export type InputMethod = 'touch' | 'keyboard';
 
 export interface UnifiedInput {
   readonly moveTargetX: number | null;
   readonly moveAxis: -1 | 0 | 1;
+  readonly moveScale?: number;
+  readonly stopOnRelease?: boolean;
   readonly action: boolean;
   readonly jump: boolean;
   readonly slam?: boolean;
+}
+
+export interface JoystickVisualState {
+  readonly active: boolean;
+  readonly originX: number;
+  readonly originY: number;
+  readonly currentX: number;
+  readonly currentY: number;
+  readonly axis: -1 | 0 | 1;
+  readonly scale: number;
 }
 
 interface PointerMoveEntry {
@@ -35,16 +29,43 @@ interface PointerMoveEntry {
   targetX: number | null;
 }
 
+export function computeJoystickResponse(
+  dx: number,
+  deadzonePx = tuning.ui.controls.joystickDeadzonePx,
+  maxRadiusPx = tuning.ui.controls.joystickMaxRadiusPx,
+): { axis: -1 | 0 | 1; scale: number } {
+  const absDx = Math.abs(dx);
+  if (absDx <= deadzonePx) {
+    return { axis: 0, scale: 0 };
+  }
+  const span = Math.max(1, maxRadiusPx - deadzonePx);
+  const scale = Math.min(1, (absDx - deadzonePx) / span);
+  return {
+    axis: dx > 0 ? 1 : -1,
+    scale,
+  };
+}
+
 export class InputController {
   private readonly movePointers = new Map<number, PointerMoveEntry>();
+  private readonly buttonPointers = new Map<number, 'jump' | 'bump'>();
   private readonly heldKeys = new Set<string>();
+  private joystickPointerId: number | null = null;
+  private joystickOriginX = 0;
+  private joystickOriginY = 0;
+  private joystickCurrentX = 0;
+  private joystickCurrentY = 0;
+  private stopRequested = false;
+
   private actionQueued = false;
   private jumpQueued = false;
   private slamQueued = false;
   private lastInputMethod: InputMethod;
+  private readonly t: Tuning;
 
-  constructor(initialMethod: InputMethod = 'touch') {
+  constructor(initialMethod: InputMethod = 'touch', t: Tuning = tuning) {
     this.lastInputMethod = initialMethod;
+    this.t = t;
   }
 
   getLastInputMethod(): InputMethod {
@@ -57,10 +78,101 @@ export class InputController {
 
   clear(): void {
     this.movePointers.clear();
+    this.buttonPointers.clear();
     this.heldKeys.clear();
+    this.joystickPointerId = null;
+    this.stopRequested = false;
     this.actionQueued = false;
     this.jumpQueued = false;
     this.slamQueued = false;
+  }
+
+  isJoystickActive(): boolean {
+    return this.joystickPointerId !== null;
+  }
+
+  isDragPointer(pointerId: number): boolean {
+    return this.joystickPointerId === pointerId || this.movePointers.has(pointerId);
+  }
+
+  startJoystick(pointerId: number, x: number, y: number, pointerType?: string): boolean {
+    if (this.joystickPointerId !== null || this.buttonPointers.has(pointerId)) {
+      return false;
+    }
+    if (pointerType === 'touch' || pointerType === 'pen' || pointerType === 'mouse') {
+      this.lastInputMethod = 'touch';
+    }
+    this.joystickPointerId = pointerId;
+    this.joystickOriginX = x;
+    this.joystickOriginY = y;
+    this.joystickCurrentX = x;
+    this.joystickCurrentY = y;
+    this.stopRequested = false;
+    return true;
+  }
+
+  updateJoystick(pointerId: number, x: number, y: number): boolean {
+    if (this.joystickPointerId !== pointerId) return false;
+    this.joystickCurrentX = x;
+    this.joystickCurrentY = y;
+    return true;
+  }
+
+  endPointer(pointerId: number): void {
+    if (this.joystickPointerId === pointerId) {
+      this.joystickPointerId = null;
+      this.stopRequested = true;
+    }
+    this.movePointers.delete(pointerId);
+    this.buttonPointers.delete(pointerId);
+  }
+
+  getJoystickVisual(): JoystickVisualState {
+    if (this.joystickPointerId === null) {
+      return {
+        active: false,
+        originX: 0,
+        originY: 0,
+        currentX: 0,
+        currentY: 0,
+        axis: 0,
+        scale: 0,
+      };
+    }
+    const resp = computeJoystickResponse(
+      this.joystickCurrentX - this.joystickOriginX,
+      this.t.ui.controls.joystickDeadzonePx,
+      this.t.ui.controls.joystickMaxRadiusPx,
+    );
+    return {
+      active: true,
+      originX: this.joystickOriginX,
+      originY: this.joystickOriginY,
+      currentX: this.joystickCurrentX,
+      currentY: this.joystickCurrentY,
+      axis: resp.axis,
+      scale: resp.scale,
+    };
+  }
+
+  tryTriggerButton(
+    pointerId: number,
+    kind: 'jump' | 'bump',
+    isAirborne: boolean,
+    pointerType?: string,
+  ): boolean {
+    if (this.isDragPointer(pointerId) || this.buttonPointers.has(pointerId)) {
+      return false;
+    }
+    this.buttonPointers.set(pointerId, kind);
+    if (kind === 'bump') {
+      this.queueAction(pointerType);
+    } else if (isAirborne) {
+      this.queueSlam(pointerType);
+    } else {
+      this.queueJump(pointerType);
+    }
+    return true;
   }
 
   setMovePointer(
@@ -92,7 +204,7 @@ export class InputController {
   }
 
   removeMovePointer(pointerId: number): void {
-    this.movePointers.delete(pointerId);
+    this.endPointer(pointerId);
   }
 
   queueAction(pointerType?: string): void {
@@ -116,12 +228,16 @@ export class InputController {
     this.slamQueued = true;
   }
 
-  onKeyDown(code: string, repeat = false): void {
+  onKeyDown(code: string, repeat = false, isAirborne = false): void {
     this.lastInputMethod = 'keyboard';
     if (code === 'Space' && !repeat) {
       this.actionQueued = true;
     } else if ((code === 'KeyW' || code === 'ArrowUp') && !repeat) {
-      this.jumpQueued = true;
+      if (isAirborne) {
+        this.slamQueued = true;
+      } else {
+        this.jumpQueued = true;
+      }
     } else if (
       code === 'KeyA' ||
       code === 'ArrowLeft' ||
@@ -136,39 +252,50 @@ export class InputController {
     this.heldKeys.delete(code);
   }
 
-  peekMoveAxis(): -1 | 0 | 1 {
+  peekMove(): { axis: -1 | 0 | 1; scale: number } {
     let dir = 0;
     if (this.heldKeys.has('KeyA') || this.heldKeys.has('ArrowLeft')) dir -= 1;
     if (this.heldKeys.has('KeyD') || this.heldKeys.has('ArrowRight')) dir += 1;
-    if (dir === 0 && this.movePointers.size > 0) {
+    if (dir !== 0) {
+      return { axis: dir < 0 ? -1 : 1, scale: 1 };
+    }
+
+    if (this.joystickPointerId !== null) {
+      const resp = computeJoystickResponse(
+        this.joystickCurrentX - this.joystickOriginX,
+        this.t.ui.controls.joystickDeadzonePx,
+        this.t.ui.controls.joystickMaxRadiusPx,
+      );
+      return resp;
+    }
+
+    if (this.movePointers.size > 0) {
       let latestDir: -1 | 0 | 1 = 0;
       for (const entry of this.movePointers.values()) {
         latestDir = entry.dir;
       }
-      dir = latestDir;
+      return { axis: latestDir, scale: latestDir === 0 ? 0 : 1 };
     }
-    if (dir < 0) return -1;
-    if (dir > 0) return 1;
-    return 0;
+
+    return { axis: 0, scale: 0 };
   }
 
-  peekMoveTargetX(): number | null {
-    if (this.heldKeys.size > 0) return null;
-    let latestTargetX: number | null = null;
-    for (const entry of this.movePointers.values()) {
-      latestTargetX = entry.targetX;
-    }
-    return latestTargetX;
+  peekMoveAxis(): -1 | 0 | 1 {
+    return this.peekMove().axis;
   }
 
   consumeFrameInput(): UnifiedInput {
+    const move = this.peekMove();
     const input: UnifiedInput = {
-      moveTargetX: this.peekMoveTargetX(),
-      moveAxis: this.peekMoveAxis(),
+      moveTargetX: null,
+      moveAxis: move.axis,
+      moveScale: move.scale,
+      stopOnRelease: this.stopRequested,
       action: this.actionQueued,
       jump: this.jumpQueued,
       slam: this.slamQueued,
     };
+    this.stopRequested = false;
     this.actionQueued = false;
     this.jumpQueued = false;
     this.slamQueued = false;
@@ -179,9 +306,10 @@ export class InputController {
 export function toWorldStepInput(input: UnifiedInput): WorldStepInput {
   return {
     moveDir: input.moveAxis,
+    moveScale: input.moveScale,
+    stopOnRelease: input.stopOnRelease,
     bumpPressed: input.action,
     jumpPressed: input.jump,
     slamPressed: Boolean(input.slam),
-    moveTargetX: input.moveTargetX,
   };
 }

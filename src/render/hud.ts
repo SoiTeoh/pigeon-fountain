@@ -1,6 +1,5 @@
 import type { AiArchetype, Tuning } from '../config/tuning';
 import { showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
-import { resolveContextAction } from '../core/input';
 import { computeControlRateMultiplier } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
 import { roundRect, type RenderExtra } from './shared';
@@ -356,7 +355,7 @@ export function drawHudAndControls(
       x: ctrl.jumpBtn.x,
       y: ctrl.jumpBtn.y,
       r: ctrl.jumpBtn.r,
-      title: STRINGS_ZH.hud.jumpTitle,
+      title: world.player.airborne ? STRINGS_ZH.hud.jumpAirTitle : STRINGS_ZH.hud.jumpTitle,
       subtitle:
         jumpCdRatio <= 0.001
           ? showKeys
@@ -387,63 +386,84 @@ export function drawHudAndControls(
       textColor: '#0f172a',
     });
   } else {
-    // Drag + single context action button!
-    ctx.save();
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
-    roundRect(ctx, 22, 550, 226, 36, 18);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.font = '700 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(showKeys ? STRINGS_ZH.hud.keyboardHint : STRINGS_ZH.hud.dragHint, 135, 568);
-    ctx.restore();
+    // Relative horizontal joystick (left 60%) + dual buttons: Jump/Slam (medium) & Bump (large)
+    if (extra.joystick?.active) {
+      const joy = extra.joystick;
+      const maxR = ctrl.joystickMaxRadiusPx;
+      const clampedDx = Math.max(-maxR, Math.min(maxR, joy.currentX - joy.originX));
+      ctx.save();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.34)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.48)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(joy.originX, joy.originY, maxR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
 
-    const ctxKind = resolveContextAction(
-      world.player.x,
-      world.player.airborne,
-      world.rivals,
-      t,
-    );
-    const cdRatio =
-      ctxKind === 'bump'
-        ? world.player.bumpCooldownSec / t.pigeon.bumpCooldownSec
-        : ctxKind === 'jump'
-          ? world.player.jumpCooldownSec / t.pigeon.jumpCooldownSec
-          : 0;
-    const title =
-      ctxKind === 'slam'
-        ? STRINGS_ZH.hud.actionSlam
-        : ctxKind === 'bump'
-          ? cdRatio <= 0.001
-            ? STRINGS_ZH.hud.actionBump
-            : STRINGS_ZH.hud.cooling
-          : cdRatio <= 0.001
-            ? STRINGS_ZH.hud.actionJump
-            : STRINGS_ZH.hud.cooling;
-    const subtitle =
-      cdRatio > 0.001
-        ? `${(ctxKind === 'bump' ? world.player.bumpCooldownSec : world.player.jumpCooldownSec).toFixed(1)}s`
-        : showKeys
-          ? '(Space)'
-          : ctxKind === 'slam'
-            ? '落空泉堵住'
-            : ctxKind === 'bump'
-              ? '撞飞对手'
-              : '越障/堵泉';
+      // Deadzone ring
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(joy.originX, joy.originY, ctrl.joystickDeadzonePx, 0, Math.PI * 2);
+      ctx.stroke();
 
+      // Knob
+      ctx.fillStyle = joy.axis === 0 ? 'rgba(255, 255, 255, 0.72)' : '#38bdf8';
+      ctx.beginPath();
+      ctx.arc(joy.originX + clampedDx, joy.originY, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.42)';
+      roundRect(ctx, 18, 554, 198, 36, 18);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.font = '700 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(showKeys ? STRINGS_ZH.hud.keyboardHint : STRINGS_ZH.hud.dragHint, 117, 572);
+      ctx.restore();
+    }
+
+    const jumpCdRatio = world.player.airborne ? 0 : world.player.jumpCooldownSec / t.pigeon.jumpCooldownSec;
     drawCircleSkillButton(ctx, {
-      x: ctrl.actionBtn.x,
-      y: ctrl.actionBtn.y,
-      r: ctrl.actionBtn.r,
-      title,
-      subtitle,
-      cooldownRatio: cdRatio,
-      readyFill: ctxKind === 'bump' ? '#f59e0b' : ctxKind === 'slam' ? '#fde047' : '#38bdf8',
-      readyStroke: ctxKind === 'bump' ? '#fef08a' : '#bae6fd',
+      x: ctrl.jumpBtn.x,
+      y: ctrl.jumpBtn.y,
+      r: ctrl.jumpBtn.r,
+      title: world.player.airborne ? STRINGS_ZH.hud.jumpAirTitle : STRINGS_ZH.hud.jumpTitle,
+      subtitle:
+        jumpCdRatio <= 0.001
+          ? world.player.airborne
+            ? '下墩'
+            : showKeys
+              ? STRINGS_ZH.hud.jumpReadyKey
+              : STRINGS_ZH.hud.jumpReadyTouch
+          : STRINGS_ZH.hud.cooling,
+      cooldownRatio: jumpCdRatio,
+      readyFill: world.player.airborne ? '#fde047' : '#38bdf8',
+      readyStroke: '#bae6fd',
+      textColor: '#0f172a',
+    });
+
+    const bumpCdRatio = world.player.bumpCooldownSec / t.pigeon.bumpCooldownSec;
+    drawCircleSkillButton(ctx, {
+      x: ctrl.bumpBtn.x,
+      y: ctrl.bumpBtn.y,
+      r: ctrl.bumpBtn.r,
+      title: bumpCdRatio <= 0.001 ? STRINGS_ZH.hud.bumpTitle : STRINGS_ZH.hud.cooling,
+      subtitle:
+        bumpCdRatio <= 0.001
+          ? showKeys
+            ? STRINGS_ZH.hud.bumpReadyKey
+            : STRINGS_ZH.hud.bumpReadyTouch
+          : `${world.player.bumpCooldownSec.toFixed(1)}s`,
+      cooldownRatio: bumpCdRatio,
+      readyFill: '#f59e0b',
+      readyStroke: '#fef08a',
       textColor: '#0f172a',
     });
   }

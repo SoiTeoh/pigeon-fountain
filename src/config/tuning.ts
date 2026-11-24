@@ -65,10 +65,13 @@ export const tuning = {
     controls: {
       leftBtn: { x: 46, y: 572, r: 26 },
       rightBtn: { x: 112, y: 572, r: 26 },
-      jumpBtn: { x: 264, y: 574, r: 25 },
-      bumpBtn: { x: 336, y: 568, r: 32 },
-      actionBtn: { x: 324, y: 562, r: 42 },
+      jumpBtn: { x: 260, y: 574, r: 28 },
+      bumpBtn: { x: 336, y: 562, r: 36 },
+      buttonHitPadPx: 14,
       dragZoneMinY: 320,
+      dragZoneMaxXRatio: 0.6,
+      joystickDeadzonePx: 10,
+      joystickMaxRadiusPx: 45,
     },
     title: {
       card: { x: 22, y: 54, w: 346, h: 528, r: 22 },

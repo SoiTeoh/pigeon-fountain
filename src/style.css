@@ -20,9 +20,11 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   background: #1e293b;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 #app {
@@ -35,5 +37,6 @@ body {
 #stage {
   display: block;
   touch-action: none;
+  overscroll-behavior: none;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
 }

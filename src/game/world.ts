@@ -130,8 +130,9 @@ export class PigeonFountainWorld {
       this.player.squashY = 1.2;
     }
 
-    // Resolve horizontal movement: either explicit targetX (drag) or moveDir (-1/0/1)
+    // Resolve horizontal movement: proportional joystick / moveDir or legacy moveTargetX
     let moveDir: -1 | 0 | 1 = input.moveDir;
+    const moveScale = clamp(input.moveScale ?? 1, 0, 1);
     if (
       moveDir === 0 &&
       input.moveTargetX !== undefined &&
@@ -143,25 +144,27 @@ export class PigeonFountainWorld {
       }
     }
 
-    if (moveDir !== 0) {
+    if (moveDir !== 0 && moveScale > 0) {
       this.player.facing = moveDir;
       const airControl = this.player.airborne ? 0.72 : 1;
-      this.player.vx += moveDir * this.t.pigeon.playerMoveAccel * airControl * dtSec;
+      this.player.vx += moveDir * this.t.pigeon.playerMoveAccel * moveScale * airControl * dtSec;
       if (!this.player.airborne) {
-        this.player.waddlePhase += dtSec * 14;
+        this.player.waddlePhase += dtSec * (10 + 6 * moveScale);
       }
     } else if (!this.player.airborne) {
-      const drag =
-        this.occupant === 'player' ? this.t.pigeon.waterDrag : this.t.pigeon.groundDrag;
-      this.player.vx -= this.player.vx * Math.min(1, drag * dtSec);
+      if (input.stopOnRelease && this.player.bumpAnimSec <= 0) {
+        this.player.vx = 0;
+      } else {
+        const drag =
+          this.occupant === 'player' ? this.t.pigeon.waterDrag : this.t.pigeon.groundDrag;
+        this.player.vx -= this.player.vx * Math.min(1, drag * dtSec);
+      }
     }
 
     if (this.player.bumpAnimSec <= 0 && (!this.player.airborne || this.player.isJumping)) {
-      this.player.vx = clamp(
-        this.player.vx,
-        -this.t.pigeon.playerMaxSpeed,
-        this.t.pigeon.playerMaxSpeed,
-      );
+      const maxSpd =
+        moveDir !== 0 ? this.t.pigeon.playerMaxSpeed * moveScale : this.t.pigeon.playerMaxSpeed;
+      this.player.vx = clamp(this.player.vx, -maxSpd, maxSpd);
     }
 
     if (this.player.airborne) {
