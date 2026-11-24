@@ -18,11 +18,6 @@ import {
   type GameMode,
   type StageId,
 } from './platform/storage';
-import {
-  createRuntimeTuning,
-  loadTuneOverrides,
-  mountTunePanel,
-} from './platform/tunePanel';
 import { drawGameFrame } from './render/painter';
 import { SceneManager } from './scenes/manager';
 
@@ -41,7 +36,7 @@ function hitCircle(
   return Math.hypot(pt.x - circle.x, pt.y - circle.y) <= circle.r + pad;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const canvasEl = document.getElementById('stage');
   if (!(canvasEl instanceof HTMLCanvasElement)) {
     throw new Error('Canvas element #stage not found');
@@ -55,9 +50,13 @@ function main(): void {
 
   const params = new URLSearchParams(window.location.search);
   const debugMode = params.get('debug') === '1';
-  const tuneMode = params.get('tune') === '1';
-  const activeTuning = tuneMode ? createRuntimeTuning(loadTuneOverrides()) : tuning;
+  const tuneMode = import.meta.env.DEV || params.has('tune');
+  let activeTuning = tuning;
   if (tuneMode) {
+    const { createRuntimeTuning, loadTuneOverrides, mountTunePanel } = await import(
+      './platform/tunePanel'
+    );
+    activeTuning = createRuntimeTuning(loadTuneOverrides());
     mountTunePanel(activeTuning);
   }
 

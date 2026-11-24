@@ -73,7 +73,7 @@ export const tuning = {
       dragZoneMinY: 320,
       dragZoneMaxXRatio: 0.6,
       joystickDeadzonePx: 5,
-      joystickMaxRadiusPx: 26,
+      joystickMaxRadiusPx: 41,
     },
     title: {
       card: { x: 22, y: 54, w: 346, h: 528, r: 22 },
