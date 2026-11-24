@@ -552,25 +552,40 @@ export function drawPropsAndPickups(
   world: PigeonFountainWorld,
   animTimeSec: number,
 ): void {
+  // Draw destroyed props first so they always stay behind everything
   for (const prop of world.props) {
-    if (!prop.intact) {
-      // Subtle smashed debris shadow + respawn timer ring in endless
-      ctx.save();
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.24)';
-      ctx.beginPath();
-      ctx.ellipse(prop.x, prop.y + prop.h / 2 - 4, prop.w * 0.45, 5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      if (world.stage.propRespawnSec !== null && prop.respawnTimerSec > 0) {
-        ctx.fillStyle = 'rgba(255,255,255,0.75)';
-        ctx.font = 'bold 10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${Math.ceil(prop.respawnTimerSec)}s`, prop.x, prop.y + 4);
-      }
-      ctx.restore();
-      continue;
+    if (prop.intact) continue;
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.24)';
+    ctx.beginPath();
+    ctx.ellipse(prop.x, prop.y + prop.h / 2 - 4, prop.w * 0.45, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (world.stage.propRespawnSec !== null && prop.respawnTimerSec > 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${Math.ceil(prop.respawnTimerSec)}s`, prop.x, prop.y + 4);
     }
+    ctx.restore();
+  }
+
+  for (const prop of world.props) {
+    if (!prop.intact) continue;
+
+    const overlapsBird =
+      (Math.abs(world.player.x - prop.x) < prop.w * 0.5 + 18 &&
+        Math.abs(world.player.y - 16 - prop.y) < prop.h * 0.5 + 18) ||
+      world.rivals.some(
+        (r) =>
+          r.respawnTimerSec <= 0 &&
+          Math.abs(r.x - prop.x) < prop.w * 0.5 + 18 &&
+          Math.abs(r.y - 16 - prop.y) < prop.h * 0.5 + 18,
+      );
 
     ctx.save();
+    if (overlapsBird) {
+      ctx.globalAlpha = 0.42;
+    }
     ctx.translate(prop.x, prop.y);
     const hw = prop.w / 2;
     const hh = prop.h / 2;

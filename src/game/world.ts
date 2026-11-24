@@ -346,7 +346,11 @@ export class PigeonFountainWorld {
         plugStarted = true;
         const started = startPlugOnNozzle(plugTarget.slotIndex, this.match.nozzles);
         this.plug = started.plug;
-        this.match = { ...this.match, nozzles: started.nozzles };
+        this.match = {
+          ...this.match,
+          nozzles: started.nozzles,
+          plugCount: this.match.plugCount + 1,
+        };
         this.player.x = plugTarget.x;
         this.player.vx = 0;
         this.player.squashX = 1.35;

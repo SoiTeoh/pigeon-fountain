@@ -59,6 +59,7 @@ export interface MatchState {
   readonly sabotageCount: number;
   readonly propSmashCount: number;
   readonly slamCount: number;
+  readonly plugCount: number;
   readonly nozzles: readonly FountainSlotState[];
   readonly lastOpenedSlot: number;
   readonly directorIdleSec: number;

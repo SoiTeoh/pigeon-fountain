@@ -266,7 +266,7 @@ export function drawResultOverlay(
           ['占领喷泉时长', `${match.soakSec.toFixed(1)} 秒`],
           ['使坏轰飞对手', `${match.sabotageCount} 次`],
           ['被暴喷轰飞', `${match.playerSurgeHits} 次`],
-          ['铁臀墩坐 / 最高连击', `${match.slamCount} 次 / ×${match.maxCombo}`],
+          ['堵泉次数 / 坑到对手', `${match.plugCount} 次 / ${match.sabotageCount} 次`],
           ['用时', `${match.elapsedSec.toFixed(1)} 秒`],
         ]
       : [
