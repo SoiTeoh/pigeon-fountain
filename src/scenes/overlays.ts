@@ -7,19 +7,27 @@ import {
 } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
 import type { StageId } from '../platform/storage';
-import { roundRect, type RenderExtra } from '../render/shared';
+import { computeViewportLayout, roundRect, type RenderExtra } from '../render/shared';
 
 export function drawTitleOverlay(
   ctx: CanvasRenderingContext2D,
   extra: RenderExtra,
   t: Tuning,
 ): void {
-  const { width, height } = t.view;
+  const { width } = t.view;
+  const layout = computeViewportLayout(
+    extra.logicalHeight ?? t.view.height,
+    extra.safeTopPx ?? 0,
+    t,
+  );
   const ui = t.ui.title;
   const stage = STAGES[extra.selectedStageId];
 
   ctx.fillStyle = 'rgba(15, 23, 42, 0.58)';
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, width, layout.logicalHeight);
+
+  ctx.save();
+  ctx.translate(0, layout.overlayOffsetY);
 
   ctx.fillStyle = '#ffffff';
   roundRect(ctx, ui.card.x, ui.card.y, ui.card.w, ui.card.h, ui.card.r);
@@ -162,6 +170,7 @@ export function drawTitleOverlay(
     ui.startBtn.x + ui.startBtn.w / 2,
     ui.startBtn.y + ui.startBtn.h / 2 + 1,
   );
+  ctx.restore();
 }
 
 export function drawPauseOverlay(
@@ -169,14 +178,22 @@ export function drawPauseOverlay(
   extra: RenderExtra,
   t: Tuning,
 ): void {
-  const { width, height } = t.view;
+  const { width } = t.view;
+  const layout = computeViewportLayout(
+    extra.logicalHeight ?? t.view.height,
+    extra.safeTopPx ?? 0,
+    t,
+  );
   const ui = t.ui.pause;
   const restartLabel = showKeyboardHints(extra.lastInputMethod)
     ? STRINGS_ZH.pause.restartKey
     : STRINGS_ZH.pause.restartTouch;
 
   ctx.fillStyle = 'rgba(15, 23, 42, 0.68)';
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, width, layout.logicalHeight);
+
+  ctx.save();
+  ctx.translate(0, layout.overlayOffsetY);
 
   ctx.fillStyle = '#ffffff';
   roundRect(ctx, ui.card.x, ui.card.y, ui.card.w, ui.card.h, ui.card.r);
@@ -205,6 +222,7 @@ export function drawPauseOverlay(
     ctx.font = btn === ui.controlToggleBtn ? '800 13.5px sans-serif' : '800 16px sans-serif';
     ctx.fillText(label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
   }
+  ctx.restore();
 }
 
 export function drawResultOverlay(
@@ -213,7 +231,12 @@ export function drawResultOverlay(
   extra: RenderExtra,
   t: Tuning,
 ): void {
-  const { width, height } = t.view;
+  const { width } = t.view;
+  const layout = computeViewportLayout(
+    extra.logicalHeight ?? t.view.height,
+    extra.safeTopPx ?? 0,
+    t,
+  );
   const { match, stage } = world;
   const ui = t.ui.result;
   const stars = match.mode === 'stage' ? evaluateStageStars(match, stage) : 0;
@@ -223,7 +246,10 @@ export function drawResultOverlay(
   const wonRace = didPlayerWinRace(match);
 
   ctx.fillStyle = 'rgba(15, 23, 42, 0.68)';
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, width, layout.logicalHeight);
+
+  ctx.save();
+  ctx.translate(0, layout.overlayOffsetY);
 
   ctx.fillStyle = '#ffffff';
   roundRect(ctx, ui.card.x, ui.card.y, ui.card.w, ui.card.h, ui.card.r);
@@ -331,4 +357,5 @@ export function drawResultOverlay(
     ctx.font = hasNextStage ? '800 14px sans-serif' : '900 15px sans-serif';
     ctx.fillText(label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
   }
+  ctx.restore();
 }

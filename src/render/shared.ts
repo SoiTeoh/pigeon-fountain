@@ -1,7 +1,39 @@
-import type { StageThemeId } from '../config/tuning';
+import type { StageThemeId, Tuning } from '../config/tuning';
 import type { InputMethod, JoystickVisualState } from '../core/input';
 import type { ScreenMode } from '../game/rules';
 import type { GameMode, PlayerProgress, StageId } from '../platform/storage';
+
+export interface CameraView {
+  readonly x: number;
+  readonly y: number;
+  readonly zoom: number;
+}
+
+export interface ViewportLayout {
+  readonly logicalWidth: number;
+  readonly logicalHeight: number;
+  readonly hudOffsetY: number;
+  readonly bottomOffsetY: number;
+  readonly overlayOffsetY: number;
+  readonly worldBaselineShiftY: number;
+}
+
+export function computeViewportLayout(
+  logicalHeight: number,
+  safeTopPx: number,
+  t: Tuning,
+): ViewportLayout {
+  const clampedH = Math.max(640, Math.min(900, Math.round(logicalHeight)));
+  const extraH = clampedH - t.view.height;
+  return {
+    logicalWidth: t.view.width,
+    logicalHeight: clampedH,
+    hudOffsetY: Math.max(0, Math.round(safeTopPx)),
+    bottomOffsetY: extraH,
+    overlayOffsetY: Math.round(extraH / 2),
+    worldBaselineShiftY: Math.round(extraH * 0.45),
+  };
+}
 
 export interface RenderExtra {
   readonly screenMode: ScreenMode;
@@ -17,6 +49,9 @@ export interface RenderExtra {
   readonly classicFourButtons: boolean;
   readonly joystick?: JoystickVisualState;
   readonly plugHintText?: string | null;
+  readonly logicalHeight?: number;
+  readonly safeTopPx?: number;
+  readonly camera?: CameraView;
 }
 
 export interface ThemePalette {

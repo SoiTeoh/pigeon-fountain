@@ -30,6 +30,7 @@ Idea Lab v2 — Project 02：基于 **Vite + TypeScript (strict) + 原生 HTML5 
   - [x] F5：被摧毁或倒下的道具先于鸽子绘制且有鸽子重叠时降低道具透明度（`0.42`）；结算界面去掉“铁臀墩坐”统计，改为“堵泉次数 / 坑到对手”（`MatchState.plugCount`）。
 - **M1 第二轮修正包（F1～F5）全部完成**。
 - **H1 收尾**：将调优后的摇杆/移动参数设为默认值（`joystickDeadzonePx: 5`、`joystickMaxRadiusPx: 41`、`playerMaxSpeed: 245`、`playerMoveAccel: 1550`），`?tune=1` 调参面板仅在 `import.meta.env.DEV` 或 URL 带 `tune` 参数时动态加载。
+- **M1-4 画面重排与镜头**：逻辑宽度固定 `390`，逻辑高度按屏幕比例在 `640–900` 自动适配（消除上下黑边，HUD 贴顶避开安全区、操作区贴底）；新增 `1.3×` 默认镜头与高空 `1.0×` 平滑跟随缩放（仅渲染层，不改物理坐标），背景实现远/中/近 3 层视差。
 
 ### 已知问题（留到 M3）
 - 第 2/3 关 `sitter` 胜率过高（91% / 73%），需要后续重构 AI 争抢策略与关卡平衡。

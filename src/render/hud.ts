@@ -3,7 +3,7 @@ import { showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
 import { findPredictedPlugNozzle } from '../game/plug';
 import { computeControlRateMultiplier } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
-import { roundRect, type RenderExtra } from './shared';
+import { computeViewportLayout, roundRect, type RenderExtra } from './shared';
 
 export function drawCircleSkillButton(
   ctx: CanvasRenderingContext2D,
@@ -188,6 +188,14 @@ export function drawHudAndControls(
   const { width } = t.view;
   const { match, combo, stage } = world;
   const hud = t.ui.hud;
+  const layout = computeViewportLayout(
+    extra.logicalHeight ?? t.view.height,
+    extra.safeTopPx ?? 0,
+    t,
+  );
+
+  ctx.save();
+  ctx.translate(0, layout.hudOffsetY);
 
   // Top HUD bar
   ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
@@ -355,11 +363,44 @@ export function drawHudAndControls(
     ctx.restore();
   }
 
+  ctx.restore();
+
   if (extra.screenMode !== 'playing' && extra.screenMode !== 'paused') return;
 
-  // Controls at bottom: classic 4-button vs default drag + single context action button
+  // Controls at bottom: classic 4-button vs default relative joystick + dual buttons
   const ctrl = t.ui.controls;
   const showKeys = showKeyboardHints(extra.lastInputMethod);
+
+  if (!extra.classicFourButtons && extra.joystick?.active) {
+    const joy = extra.joystick;
+    const maxR = ctrl.joystickMaxRadiusPx;
+    const clampedDx = Math.max(-maxR, Math.min(maxR, joy.currentX - joy.originX));
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.34)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.48)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(joy.originX, joy.originY, maxR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Deadzone ring
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(joy.originX, joy.originY, ctrl.joystickDeadzonePx, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Knob
+    ctx.fillStyle = joy.axis === 0 ? 'rgba(255, 255, 255, 0.72)' : '#38bdf8';
+    ctx.beginPath();
+    ctx.arc(joy.originX + clampedDx, joy.originY, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.translate(0, layout.bottomOffsetY);
 
   if (extra.classicFourButtons) {
     // Left / Right buttons
@@ -427,33 +468,7 @@ export function drawHudAndControls(
     });
   } else {
     // Relative horizontal joystick (left 60%) + dual buttons: Jump/Slam (medium) & Bump (large)
-    if (extra.joystick?.active) {
-      const joy = extra.joystick;
-      const maxR = ctrl.joystickMaxRadiusPx;
-      const clampedDx = Math.max(-maxR, Math.min(maxR, joy.currentX - joy.originX));
-      ctx.save();
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.34)';
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.48)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(joy.originX, joy.originY, maxR, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      // Deadzone ring
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(joy.originX, joy.originY, ctrl.joystickDeadzonePx, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Knob
-      ctx.fillStyle = joy.axis === 0 ? 'rgba(255, 255, 255, 0.72)' : '#38bdf8';
-      ctx.beginPath();
-      ctx.arc(joy.originX + clampedDx, joy.originY, 18, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    } else {
+    if (!extra.joystick?.active) {
       ctx.save();
       ctx.fillStyle = 'rgba(15, 23, 42, 0.42)';
       roundRect(ctx, 18, 554, 198, 36, 18);
@@ -526,6 +541,7 @@ export function drawHudAndControls(
       textColor: '#0f172a',
     });
   }
+  ctx.restore();
 }
 
 export function drawDebugOverlay(

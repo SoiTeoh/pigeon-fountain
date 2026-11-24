@@ -15,7 +15,10 @@ import {
   drawSingleFountainJet,
   drawUndergroundPlugPipes,
 } from './plaza';
-import type { RenderExtra } from './shared';
+import {
+  computeViewportLayout,
+  type RenderExtra,
+} from './shared';
 
 export type { RenderExtra } from './shared';
 
@@ -25,11 +28,33 @@ export function drawGameFrame(
   extra: RenderExtra,
   t: Tuning = tuning,
 ): void {
-  ctx.save();
+  const layout = computeViewportLayout(
+    extra.logicalHeight ?? t.view.height,
+    extra.safeTopPx ?? 0,
+    t,
+  );
+  const cam = extra.camera ?? {
+    x: t.view.width / 2,
+    y: t.scene.groundY - 45,
+    zoom: 1.3,
+  };
   const shake = computeCameraShake(world, extra.screenMode);
-  ctx.translate(shake.x, shake.y);
+  const screenFocusY = t.scene.groundY - 45 + layout.worldBaselineShiftY;
 
-  drawPlazaBackground(ctx, world, t, extra.animTimeSec);
+  ctx.save();
+  ctx.translate(t.view.width / 2 + shake.x, screenFocusY + shake.y);
+  ctx.scale(cam.zoom, cam.zoom);
+  ctx.translate(-cam.x, -cam.y);
+
+  drawPlazaBackground(
+    ctx,
+    world,
+    t,
+    extra.animTimeSec,
+    cam.x - t.view.width / 2,
+    280 + layout.worldBaselineShiftY,
+    380 + layout.bottomOffsetY,
+  );
   drawPropsAndPickups(ctx, world, extra.animTimeSec);
 
   // Resolve active plugger (player or rival) for unified visuals & underground pipes

@@ -78,19 +78,28 @@ export function drawPlazaBackground(
   world: PigeonFountainWorld,
   t: Tuning,
   animTimeSec: number,
+  cameraOffsetX = 0,
+  skyTopExtra = 260,
+  groundBotExtra = 380,
 ): void {
   const { width, height } = t.view;
   const { groundY } = t.scene;
   const { stage } = world;
   const pal = THEME_PALETTES[stage.theme];
+  const minX = -160;
+  const fullW = width + 320;
+  const minY = -skyTopExtra;
+  const maxY = height + groundBotExtra;
 
-  // Sky gradient
-  const sky = ctx.createLinearGradient(0, 0, 0, groundY);
+  // Layer 1 (Far): Sky gradient + clouds/stars + distant skyline (0.25x parallax)
+  const sky = ctx.createLinearGradient(0, minY, 0, groundY);
   sky.addColorStop(0, pal.skyTop);
   sky.addColorStop(1, pal.skyBottom);
   ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, width, groundY);
+  ctx.fillRect(minX, minY, fullW, groundY - minY);
 
+  ctx.save();
+  ctx.translate(-cameraOffsetX * 0.25, 0);
   if (pal.isNight) {
     // Twinkling stars & city skyline silhouette
     ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
@@ -110,16 +119,39 @@ export function drawPlazaBackground(
     // Distant shops / neon buildings
     ctx.fillStyle = stage.theme === 'carnival' ? '#1e1b4b' : '#334155';
     const buildings = [
+      [-60, 96, 64],
       [14, 108, 66],
       [92, 132, 74],
       [182, 94, 62],
       [256, 126, 68],
       [332, 102, 54],
+      [396, 114, 64],
     ];
     for (const [bx, bh, bw] of buildings) {
       ctx.fillRect(bx, groundY - 22 - bh, bw, bh);
     }
+  } else {
+    // Soft clouds
+    ctx.fillStyle = 'rgba(255,255,255,0.78)';
+    const cloudShift = (animTimeSec * 8) % (width + 120);
+    for (const [cx, cy, r] of [
+      [70, 108, 22],
+      [250, 86, 26],
+    ]) {
+      const x = ((cx + cloudShift) % (width + 120)) - 60;
+      ctx.beginPath();
+      ctx.arc(x, cy, r, 0, Math.PI * 2);
+      ctx.arc(x + 20, cy + 4, r * 0.78, 0, Math.PI * 2);
+      ctx.arc(x - 18, cy + 5, r * 0.72, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
 
+  // Layer 2 (Mid): Shops, trees, balustrade (0.55x parallax)
+  ctx.save();
+  ctx.translate(-cameraOffsetX * 0.55, 0);
+  if (pal.isNight) {
     if (stage.theme === 'commercial') {
       // Trendy cafe neon signs
       ctx.fillStyle = 'rgba(244, 114, 182, 0.85)';
@@ -140,8 +172,8 @@ export function drawPlazaBackground(
       ctx.strokeStyle = 'rgba(255,255,255,0.35)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(0, 122);
-      ctx.quadraticCurveTo(195, 162, width, 122);
+      ctx.moveTo(-40, 122);
+      ctx.quadraticCurveTo(195, 162, width + 40, 122);
       ctx.stroke();
       const bulbColors = ['#facc15', '#f43f5e', '#38bdf8', '#4ade80'];
       for (let i = 0; i < 9; i++) {
@@ -155,21 +187,6 @@ export function drawPlazaBackground(
       }
     }
   } else {
-    // Soft clouds & neighborhood/park backdrop
-    ctx.fillStyle = 'rgba(255,255,255,0.78)';
-    const cloudShift = (animTimeSec * 8) % (width + 120);
-    for (const [cx, cy, r] of [
-      [70, 108, 22],
-      [250, 86, 26],
-    ]) {
-      const x = ((cx + cloudShift) % (width + 120)) - 60;
-      ctx.beginPath();
-      ctx.arc(x, cy, r, 0, Math.PI * 2);
-      ctx.arc(x + 20, cy + 4, r * 0.78, 0, Math.PI * 2);
-      ctx.arc(x - 18, cy + 5, r * 0.72, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
     if (stage.theme === 'neighborhood') {
       // Cozy residential warm brick facades in background
       ctx.fillStyle = '#fed7aa';
@@ -195,22 +212,25 @@ export function drawPlazaBackground(
     // Park trees
     ctx.fillStyle = pal.treeColor;
     for (const [tx, tr] of [
+      [-18, 36],
       [58, 38],
       [138, 46],
       [245, 44],
       [335, 38],
+      [408, 36],
     ]) {
       ctx.beginPath();
       ctx.arc(tx, groundY - 45, tr, 0, Math.PI * 2);
       ctx.fill();
     }
   }
+  ctx.restore();
 
-  // Balustrade
+  // Layer 3 (Near): Balustrade, ledges, plaza ground, drainage grate (1.0x)
   ctx.fillStyle = pal.railBody;
-  ctx.fillRect(0, groundY - 22, width, 22);
+  ctx.fillRect(minX, groundY - 22, fullW, 22);
   ctx.fillStyle = pal.railTop;
-  ctx.fillRect(0, groundY - 24, width, 4);
+  ctx.fillRect(minX, groundY - 24, fullW, 4);
 
   // Elevated side ledges for Angry-Birds style upper props!
   for (const prop of world.props) {
@@ -226,20 +246,20 @@ export function drawPlazaBackground(
   }
 
   // Wet stone plaza ground
-  const floorGrad = ctx.createLinearGradient(0, groundY, 0, height);
+  const floorGrad = ctx.createLinearGradient(0, groundY, 0, maxY);
   floorGrad.addColorStop(0, pal.floorTop);
   floorGrad.addColorStop(0.28, pal.floorMid);
   floorGrad.addColorStop(1, pal.floorBot);
   ctx.fillStyle = floorGrad;
-  ctx.fillRect(0, groundY, width, height - groundY);
+  ctx.fillRect(minX, groundY, fullW, maxY - groundY);
 
   // Stone tile lines
   ctx.strokeStyle = 'rgba(255,255,255,0.12)';
   ctx.lineWidth = 1.5;
-  for (let x = 20; x < width; x += 62) {
+  for (let x = -104; x < width + 140; x += 62) {
     ctx.beginPath();
     ctx.moveTo(x, groundY);
-    ctx.lineTo(x - 16, height);
+    ctx.lineTo(x - 24, maxY);
     ctx.stroke();
   }
 

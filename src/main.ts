@@ -18,7 +18,9 @@ import {
   type GameMode,
   type StageId,
 } from './platform/storage';
+import { createInitialCameraState, stepCameraState } from './render/camera';
 import { drawGameFrame } from './render/painter';
+import { computeViewportLayout } from './render/shared';
 import { SceneManager } from './scenes/manager';
 
 function hitRect(
@@ -83,24 +85,47 @@ async function main(): Promise<void> {
     activeTuning,
   );
   let dpr = 1;
+  let logicalHeight: number = tuning.view.height;
+  let safeTopPx = 0;
+  let camera = createInitialCameraState(activeTuning);
+
+  function measureSafeTopPx(): number {
+    try {
+      const probe = document.createElement('div');
+      probe.style.cssText =
+        'position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top, 0px);pointer-events:none;visibility:hidden;';
+      document.body.appendChild(probe);
+      const px = probe.getBoundingClientRect().height;
+      probe.remove();
+      return Number.isFinite(px) ? Math.max(0, px) : 0;
+    } catch {
+      return 0;
+    }
+  }
 
   function resizeCanvas(): void {
     const vw = Math.max(240, window.innerWidth);
     const vh = Math.max(320, window.innerHeight);
-    const aspect = tuning.view.width / tuning.view.height;
+    safeTopPx = measureSafeTopPx();
+    logicalHeight = Math.max(640, Math.min(900, Math.round(tuning.view.width * (vh / vw))));
+    const aspect = tuning.view.width / logicalHeight;
 
     let cssWidth = vw;
-    let cssHeight = cssWidth / aspect;
-    if (cssHeight > vh) {
+    let cssHeight = vh;
+    if (vw > vh) {
       cssHeight = vh;
       cssWidth = cssHeight * aspect;
+      if (cssWidth > vw) {
+        cssWidth = vw;
+        cssHeight = cssWidth / aspect;
+      }
     }
 
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.style.width = `${Math.floor(cssWidth)}px`;
     canvas.style.height = `${Math.floor(cssHeight)}px`;
     canvas.width = Math.round(tuning.view.width * dpr);
-    canvas.height = Math.round(tuning.view.height * dpr);
+    canvas.height = Math.round(logicalHeight * dpr);
   }
 
   function toLogicalCoords(clientX: number, clientY: number): { x: number; y: number } {
@@ -109,7 +134,7 @@ async function main(): Promise<void> {
     const ry = rect.height > 0 ? (clientY - rect.top) / rect.height : 0.5;
     return {
       x: Math.max(0, Math.min(tuning.view.width, rx * tuning.view.width)),
-      y: Math.max(0, Math.min(tuning.view.height, ry * tuning.view.height)),
+      y: Math.max(0, Math.min(logicalHeight, ry * logicalHeight)),
     };
   }
 
@@ -165,16 +190,18 @@ async function main(): Promise<void> {
       inputController.setInputMethod('touch');
     }
     const pt = toLogicalCoords(e.clientX, e.clientY);
+    const layout = computeViewportLayout(logicalHeight, safeTopPx, activeTuning);
 
     if (sceneManager.mode === 'title') {
       const ui = tuning.ui.title;
-      if (hitRect(pt, ui.modeStageBtn)) {
+      const opt = { x: pt.x, y: pt.y - layout.overlayOffsetY };
+      if (hitRect(opt, ui.modeStageBtn)) {
         gameMode = 'stage';
         syncPreviewWorld();
         sound.playUiClick();
         return;
       }
-      if (hitRect(pt, ui.modeEndlessBtn)) {
+      if (hitRect(opt, ui.modeEndlessBtn)) {
         gameMode = 'endless';
         syncPreviewWorld();
         sound.playUiClick();
@@ -185,7 +212,7 @@ async function main(): Promise<void> {
         for (let i = 0; i < ids.length; i++) {
           const sx = ui.stageCardStartX + i * (ui.stageCardW + ui.stageCardGap);
           const cardRect = { x: sx, y: ui.stageCardY, w: ui.stageCardW, h: ui.stageCardH };
-          if (hitRect(pt, cardRect) && ids[i] <= progress.unlockedStage) {
+          if (hitRect(opt, cardRect) && ids[i] <= progress.unlockedStage) {
             selectedStageId = ids[i];
             syncPreviewWorld();
             sound.playUiClick();
@@ -193,7 +220,7 @@ async function main(): Promise<void> {
           }
         }
       }
-      if (hitRect(pt, ui.startBtn)) {
+      if (hitRect(opt, ui.startBtn)) {
         sound.playUiClick();
         startNewGame(gameMode, selectedStageId);
       }
@@ -202,15 +229,16 @@ async function main(): Promise<void> {
 
     if (sceneManager.mode === 'paused') {
       const ui = tuning.ui.pause;
-      if (hitRect(pt, ui.resumeBtn)) {
+      const opt = { x: pt.x, y: pt.y - layout.overlayOffsetY };
+      if (hitRect(opt, ui.resumeBtn)) {
         togglePause();
-      } else if (hitRect(pt, ui.restartBtn)) {
+      } else if (hitRect(opt, ui.restartBtn)) {
         sound.playUiClick();
         startNewGame(gameMode, selectedStageId);
-      } else if (hitRect(pt, ui.homeBtn)) {
+      } else if (hitRect(opt, ui.homeBtn)) {
         sound.playUiClick();
         returnToHome();
-      } else if (hitRect(pt, ui.controlToggleBtn)) {
+      } else if (hitRect(opt, ui.controlToggleBtn)) {
         sound.playUiClick();
         progress = {
           ...progress,
@@ -223,12 +251,13 @@ async function main(): Promise<void> {
 
     if (sceneManager.mode === 'result') {
       const ui = tuning.ui.result;
+      const opt = { x: pt.x, y: pt.y - layout.overlayOffsetY };
       const stageCleared =
         world.match.mode === 'stage' &&
         evaluateStageStars(world.match, STAGES[world.match.stageId]) >= 1;
       const hasNext = stageCleared && world.match.stageId < 4;
 
-      if (hasNext && hitRect(pt, ui.primaryBtn)) {
+      if (hasNext && hitRect(opt, ui.primaryBtn)) {
         sound.playUiClick();
         startNewGame('stage', (world.match.stageId + 1) as StageId);
         return;
@@ -236,10 +265,10 @@ async function main(): Promise<void> {
 
       const leftBtn = hasNext ? ui.secondaryLeftBtn : ui.soloLeftBtn;
       const rightBtn = hasNext ? ui.secondaryRightBtn : ui.soloRightBtn;
-      if (hitRect(pt, leftBtn)) {
+      if (hitRect(opt, leftBtn)) {
         sound.playUiClick();
         startNewGame(gameMode, selectedStageId);
-      } else if (hitRect(pt, rightBtn)) {
+      } else if (hitRect(opt, rightBtn)) {
         sound.playUiClick();
         returnToHome();
       }
@@ -247,11 +276,12 @@ async function main(): Promise<void> {
     }
 
     // Playing state: HUD buttons
-    if (hitCircle(pt, tuning.ui.hud.muteBtn, 6)) {
+    const hudPt = { x: pt.x, y: pt.y - layout.hudOffsetY };
+    if (hitCircle(hudPt, tuning.ui.hud.muteBtn, 6)) {
       sound.muted = !sound.muted;
       return;
     }
-    if (hitCircle(pt, tuning.ui.hud.pauseBtn, 6)) {
+    if (hitCircle(hudPt, tuning.ui.hud.pauseBtn, 6)) {
       togglePause();
       return;
     }
@@ -259,18 +289,19 @@ async function main(): Promise<void> {
     const ctrl = tuning.ui.controls;
     const hitPad = ctrl.buttonHitPadPx;
     const rightZoneX = tuning.view.width * ctrl.dragZoneMaxXRatio;
+    const botPt = { x: pt.x, y: pt.y - layout.bottomOffsetY };
 
     if (progress.classicFourButtons) {
       // Classic 4-button layout
-      if (hitCircle(pt, ctrl.jumpBtn, hitPad)) {
+      if (hitCircle(botPt, ctrl.jumpBtn, hitPad)) {
         inputController.tryTriggerButton(e.pointerId, 'jump', world.player.airborne, e.pointerType);
         return;
       }
-      if (hitCircle(pt, ctrl.bumpBtn, hitPad)) {
+      if (hitCircle(botPt, ctrl.bumpBtn, hitPad)) {
         inputController.tryTriggerButton(e.pointerId, 'bump', world.player.airborne, e.pointerType);
         return;
       }
-      if (hitCircle(pt, ctrl.leftBtn, hitPad)) {
+      if (hitCircle(botPt, ctrl.leftBtn, hitPad)) {
         inputController.setMovePointer(e.pointerId, -1, false, pt.x, e.pointerType);
         try {
           canvas.setPointerCapture(e.pointerId);
@@ -279,7 +310,7 @@ async function main(): Promise<void> {
         }
         return;
       }
-      if (hitCircle(pt, ctrl.rightBtn, hitPad)) {
+      if (hitCircle(botPt, ctrl.rightBtn, hitPad)) {
         inputController.setMovePointer(e.pointerId, 1, false, pt.x, e.pointerType);
         try {
           canvas.setPointerCapture(e.pointerId);
@@ -291,18 +322,18 @@ async function main(): Promise<void> {
     } else {
       // Right 40%: dual buttons only (no drag); Left 60% lower half: relative horizontal joystick
       if (pt.x >= rightZoneX) {
-        if (hitCircle(pt, ctrl.bumpBtn, hitPad)) {
+        if (hitCircle(botPt, ctrl.bumpBtn, hitPad)) {
           inputController.tryTriggerButton(e.pointerId, 'bump', world.player.airborne, e.pointerType);
           return;
         }
-        if (hitCircle(pt, ctrl.jumpBtn, hitPad)) {
+        if (hitCircle(botPt, ctrl.jumpBtn, hitPad)) {
           inputController.tryTriggerButton(e.pointerId, 'jump', world.player.airborne, e.pointerType);
           return;
         }
         return;
       }
 
-      if (pt.y >= ctrl.dragZoneMinY) {
+      if (pt.y >= ctrl.dragZoneMinY + layout.bottomOffsetY * 0.5) {
         if (inputController.startJoystick(e.pointerId, pt.x, pt.y, e.pointerType)) {
           try {
             canvas.setPointerCapture(e.pointerId);
@@ -522,6 +553,8 @@ async function main(): Promise<void> {
       animTimeSec += elapsed / 1000;
     }
 
+    camera = stepCameraState(camera, world, elapsed / 1000, activeTuning);
+
     const activeDir = computeMoveDir();
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -542,6 +575,9 @@ async function main(): Promise<void> {
         classicFourButtons: progress.classicFourButtons,
         joystick: inputController.getJoystickVisual(),
         plugHintText,
+        logicalHeight,
+        safeTopPx,
+        camera,
       },
       activeTuning,
     );
