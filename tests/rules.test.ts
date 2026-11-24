@@ -360,7 +360,7 @@ describe('stepMatchState', () => {
       tuning,
       () => 0.5,
     );
-    expect(p1.state.playerControl).toBeCloseTo(4, 4);
+    expect(p1.state.playerControl).toBeCloseTo(tuning.control.baseGainPerSec, 4);
 
     const p3 = stepMatchState(
       { ...base, playerHoldSec: 3.0, nozzles },
@@ -368,7 +368,7 @@ describe('stepMatchState', () => {
       tuning,
       () => 0.5,
     );
-    expect(p3.state.playerControl).toBeCloseTo(8, 4); // 4/s * 2x
+    expect(p3.state.playerControl).toBeCloseTo(tuning.control.baseGainPerSec * 2, 4); // base * 2x
 
     const rivalActive = stepMatchState(
       { ...base, nozzles },
@@ -376,7 +376,10 @@ describe('stepMatchState', () => {
       tuning,
       () => 0.5,
     );
-    expect(rivalActive.state.rivalControls[0].control).toBeCloseTo(4 * 0.7, 4);
+    expect(rivalActive.state.rivalControls[0].control).toBeCloseTo(
+      tuning.control.baseGainPerSec * STAGES[1].rivalGainMult,
+      4,
+    );
 
     const rivalStunned = stepMatchState(
       { ...base, nozzles },

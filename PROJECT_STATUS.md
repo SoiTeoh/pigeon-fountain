@@ -21,6 +21,8 @@ Idea Lab v2 — Project 02：基于 **Vite + TypeScript (strict) + 原生 HTML5 
   - [x] R1：触屏操作修正为“左下 60% 相对横向摇杆（±10px 死区、±45px 满速、松手即停）+ 右侧 40% 顶/跳双键（+14px 判定、多指隔离）”，新增 `overscroll-behavior: none` 与 `contextmenu` 禁用，补全 `tests/input.test.ts`。
   - [x] R2：新增空中预测落点标记（可堵泉眼时变“屁股”图标闪烁 + 按钮切换“墩·堵泉”）、地面 120px 内可堵泉眼跳动屁股图标，以及 `plugSuccessCount < 3` 新手提示（持久化至 `storage.ts`）。
   - [x] R3：水柱争抢规则改为多鸽同核时互不涨条并抖动显示“抢！”；按 T1/T2/T3 分级重写对手 AI（T1 争抢 >1.2s 猛顶、T2 预警逃离+抢 WARNING、T3 堵泉+躲避玩家堵泉相邻位），并落实白胖 0.7× / 麻雀 1.3× 击退差异。
+  - [x] R4：新建 `tools/balance.ts`（`npm run balance`），实现 `sitter`/`normal`/`expert` 3 档机器人第 1–4 关各 300 局批量模拟并完成第 1 关 `tuning` 调参。
+- **M1 修正包（R1～R4）全部完成**，等待真机体验反馈。
 - **V2.0 Phase 1（`v2.0-arcade`）实机录屏体验与全量自动化验收均已完成**。
 - 已完成 4 关闯关霸占 + 60s 无尽广场大乱斗全部实测，并修复实机录屏发现的第 4 关结算页重复「再来一局 (R)」按钮与封面 4 位数高分与星星行距过近问题。
 - 已打标 `v2.0-arcade` 并准备接入个人博客 `IDEA LAB / 003` 上线部署。
