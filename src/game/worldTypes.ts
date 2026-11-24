@@ -16,6 +16,12 @@ export interface PigeonBody {
   squashY: number;
 }
 
+export interface PlugCallout {
+  readonly text: string;
+  readonly avatarKind: 'player' | AiArchetype;
+  timerSec: number;
+}
+
 export interface RivalBird extends PigeonBody {
   id: number;
   archetype: AiArchetype;
@@ -30,6 +36,7 @@ export interface RivalBird extends PigeonBody {
   plugSlotIndex: number | null;
   plugHoldSec: number;
   isJumpingToPlug: boolean;
+  smugTimerSec: number;
   intent: AiIntent;
   launchedByFountain: boolean;
   redCrestState: RedCrestPhase;
@@ -176,6 +183,7 @@ export function createRivalBirds(stage: StageConfig, t: Tuning): RivalBird[] {
       plugSlotIndex: null,
       plugHoldSec: 0,
       isJumpingToPlug: false,
+      smugTimerSec: 0,
       intent: 'roam',
       launchedByFountain: false,
       redCrestState: 'idle',

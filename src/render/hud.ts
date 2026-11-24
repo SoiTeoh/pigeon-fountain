@@ -74,7 +74,7 @@ export function drawCircleSkillButton(
   ctx.restore();
 }
 
-function drawMiniBirdAvatar(
+export function drawMiniBirdAvatar(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -329,6 +329,29 @@ export function drawHudAndControls(
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(extra.plugHintText, width / 2, 111);
+    ctx.restore();
+  }
+
+  if (world.plugCallout && world.plugCallout.timerSec > 0) {
+    ctx.save();
+    const bannerW = 216;
+    const bannerH = 38;
+    const bx = width / 2 - bannerW / 2;
+    const by = 132;
+    ctx.fillStyle = '#fde047';
+    ctx.strokeStyle = '#2B2B3A';
+    ctx.lineWidth = 3;
+    roundRect(ctx, bx, by, bannerW, bannerH, 19);
+    ctx.fill();
+    ctx.stroke();
+
+    drawMiniBirdAvatar(ctx, bx + 22, by + bannerH / 2, 13, world.plugCallout.avatarKind);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '900 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(world.plugCallout.text, bx + bannerW / 2 + 12, by + bannerH / 2 + 1);
     ctx.restore();
   }
 

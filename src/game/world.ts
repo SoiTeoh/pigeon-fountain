@@ -1,12 +1,13 @@
 import { tuning, type StageConfig, type Tuning } from '../config/tuning';
 import { generateRandomSeed, hashState, mulberry32, normalizeSeed } from '../core/rng';
 import type { GameMode, StageId } from '../platform/storage';
+import { formatPluggedByRival, formatPluggedRival } from '../content/strings.zh';
 import { createInitialPlugState, findPluggableNozzle, startPlugOnNozzle, stepPlugState, type PlugState } from './plug';
 import { clamp, createInitialMatchState, createInitialProps, evaluateButtSlam, getStageForMatch, stepMatchState, type MatchState, type Occupant, type PropState } from './rules';
 import { pushFloatingText, spawnParticleBurst, stepBirdSquashAndExpression, stepWorldVisualFx } from './worldFx';
 import { spawnAmbientFountainParticles, stepCornAndPickups } from './worldPickups';
 import { launchRivalFromFountain, performPlayerBump, resolveRivalInteractions, stepRivalsMovement } from './worldRivals';
-import { createEmptyWorldEvents, createRivalBirds, type BonusPickup, type FloatingText, type Particle, type PigeonBody, type PlayerExpression, type RivalBird, type ShockwaveRing, type WorldStepEvents, type WorldStepInput } from './worldTypes';
+import { createEmptyWorldEvents, createRivalBirds, type BonusPickup, type FloatingText, type Particle, type PigeonBody, type PlayerExpression, type PlugCallout, type RivalBird, type ShockwaveRing, type WorldStepEvents, type WorldStepInput } from './worldTypes';
 
 export * from './worldTypes';
 
@@ -21,10 +22,12 @@ export class PigeonFountainWorld {
     bumpCooldownSec: number;
     bumpAnimSec: number;
     jumpCooldownSec: number;
+    smugTimerSec: number;
     isJumping: boolean;
     expression: PlayerExpression;
   };
   rivals: RivalBird[];
+  plugCallout: PlugCallout | null = null;
   occupant: Occupant = 'none';
   occupiedSlotIndex: number | null = null;
   combo: 1 | 2 | 3 = 1;
@@ -70,6 +73,7 @@ export class PigeonFountainWorld {
       bumpCooldownSec: 0,
       bumpAnimSec: 0,
       jumpCooldownSec: 0,
+      smugTimerSec: 0,
       isJumping: false,
       expression: 'smug',
     };
@@ -87,6 +91,10 @@ export class PigeonFountainWorld {
     stepWorldVisualFx(this.particles, this.floats, this.shockwaves, dtSec);
     this.shakeMag = Math.max(0, this.shakeMag - 26 * dtSec);
     this.auntieNoticeTimerSec = Math.max(0, this.auntieNoticeTimerSec - dtSec);
+    if (this.plugCallout) {
+      this.plugCallout.timerSec -= dtSec;
+      if (this.plugCallout.timerSec <= 0) this.plugCallout = null;
+    }
 
     if (this.match.finished) {
       return createEmptyWorldEvents(this.occupant, this.combo);
@@ -108,6 +116,7 @@ export class PigeonFountainWorld {
     this.player.bumpCooldownSec = Math.max(0, this.player.bumpCooldownSec - dtSec);
     this.player.bumpAnimSec = Math.max(0, this.player.bumpAnimSec - dtSec);
     this.player.jumpCooldownSec = Math.max(0, this.player.jumpCooldownSec - dtSec);
+    this.player.smugTimerSec = Math.max(0, this.player.smugTimerSec - dtSec);
 
     // Jump ("小跳")
     let jumped = false;
@@ -348,11 +357,65 @@ export class PigeonFountainWorld {
       this.player.x = clamp(this.player.x, 20, this.t.view.width - 20);
     }
 
-    // Clamp grounded rivals or handle AI plug-landing / despawn launched rivals
+    // Clamp grounded rivals or handle AI plug-landing / AI plug hold / despawn launched rivals
     for (const r of this.rivals) {
       if (r.respawnTimerSec > 0) continue;
       if (!r.airborne) {
         r.x = clamp(r.x, this.t.scene.stageMinX, this.t.scene.stageMaxX);
+        if (r.plugSlotIndex !== null) {
+          const slot = this.match.nozzles[r.plugSlotIndex];
+          if (!slot || slot.phase !== 'PLUGGED') {
+            r.plugSlotIndex = null;
+            r.plugHoldSec = 0;
+            r.plugCooldownSec = this.t.plug.cooldownSec;
+          } else {
+            r.x = slot.x;
+            r.vx = 0;
+            r.plugHoldSec += dtSec;
+            const playerOnAdj = this.match.nozzles.some(
+              (n) => Math.abs(n.slotIndex - slot.slotIndex) === 1 && Math.abs(this.player.x - n.x) <= this.t.fountain.coreRadiusPx + 6,
+            );
+            const shouldRelease =
+              r.plugHoldSec >= this.t.plug.aiPlugMinHoldSec &&
+              (playerOnAdj || r.plugHoldSec >= 1.2);
+            if (shouldRelease) {
+              const adjIndices = [slot.slotIndex - 1, slot.slotIndex + 1].filter(
+                (idx) => idx >= 0 && idx < this.match.nozzles.length,
+              );
+              const nextNozzles = this.match.nozzles.map((n) =>
+                n.slotIndex === slot.slotIndex
+                  ? { ...n, phase: 'IDLE' as const, phaseTimerSec: 0 }
+                  : adjIndices.includes(n.slotIndex)
+                    ? { ...n, phase: 'SURGE' as const, phaseTimerSec: this.t.fountain.surgeDurationSec, lateralDir: 0 as const, lateralStrength: 0 }
+                    : n,
+              );
+              this.match = { ...this.match, nozzles: nextNozzles };
+              r.plugSlotIndex = null;
+              r.plugHoldSec = 0;
+              r.plugCooldownSec = this.t.plug.cooldownSec;
+              if (
+                !this.player.airborne &&
+                adjIndices.some((idx) => Math.abs(this.player.x - nextNozzles[idx].x) <= this.t.fountain.coreRadiusPx + 4)
+              ) {
+                this.player.airborne = true;
+                this.player.isJumping = false;
+                this.player.vy = -520;
+                this.shakeMag = Math.max(this.shakeMag, 9);
+                r.smugTimerSec = 0.6;
+                this.plugCallout = {
+                  text: formatPluggedByRival(r.archetype),
+                  avatarKind: r.archetype,
+                  timerSec: 1.6,
+                };
+                this.match = {
+                  ...this.match,
+                  playerControl: Math.max(0, this.match.playerControl - this.t.control.surgePenalty),
+                  playerSurgeHits: this.match.playerSurgeHits + 1,
+                };
+              }
+            }
+          }
+        }
       } else if (r.isJumpingToPlug && r.y >= this.t.scene.groundY && r.vy > 0) {
         r.y = this.t.scene.groundY;
         r.vy = 0;
@@ -365,25 +428,14 @@ export class PigeonFountainWorld {
         );
         if (hitSlot) {
           const nextNozzles = this.match.nozzles.map((n) =>
-            Math.abs(n.slotIndex - hitSlot.slotIndex) === 1
-              ? { ...n, phase: 'SURGE' as const, phaseTimerSec: this.t.fountain.surgeDurationSec, lateralDir: 0 as const, lateralStrength: 0 }
+            n.slotIndex === hitSlot.slotIndex
+              ? { ...n, phase: 'PLUGGED' as const, phaseTimerSec: 0, lateralDir: 0 as const, lateralStrength: 0 }
               : n,
           );
           this.match = { ...this.match, nozzles: nextNozzles };
-          pushFloatingText(this.floats, this.t, hitSlot.x, this.t.scene.groundY - 68, '对手堵泉偷袭！', '#fb7185', 1.05);
-          if (
-            !this.player.airborne &&
-            nextNozzles.some((n) => n.phase === 'SURGE' && Math.abs(this.player.x - n.x) <= this.t.fountain.coreRadiusPx + 4)
-          ) {
-            this.player.airborne = true;
-            this.player.isJumping = false;
-            this.player.vy = -520;
-            this.match = {
-              ...this.match,
-              playerControl: Math.max(0, this.match.playerControl - this.t.control.surgePenalty),
-              playerSurgeHits: this.match.playerSurgeHits + 1,
-            };
-          }
+          r.plugSlotIndex = hitSlot.slotIndex;
+          r.plugHoldSec = 0;
+          r.x = hitSlot.x;
         }
       } else if (
         r.y > this.t.view.height + 60 ||
@@ -394,6 +446,8 @@ export class PigeonFountainWorld {
         r.airborne = false;
         r.isJumpingToPlug = false;
         r.launchedByFountain = false;
+        r.plugSlotIndex = null;
+        r.plugHoldSec = 0;
         r.respawnTimerSec = this.t.pigeon.aiRespawnSec;
       }
     }
@@ -472,6 +526,12 @@ export class PigeonFountainWorld {
           ) {
             aiHitByPlugSurge = true;
             sabotageCount += 1;
+            this.player.smugTimerSec = 0.6;
+            this.plugCallout = {
+              text: formatPluggedRival(rival.archetype),
+              avatarKind: rival.archetype,
+              timerSec: 1.6,
+            };
             const rc = updatedRivalControls.find((c) => c.id === rival.id);
             if (rc) rc.control = Math.max(0, rc.control - this.t.control.surgePenalty);
             this.shakeMag = Math.max(

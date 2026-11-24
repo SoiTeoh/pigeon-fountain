@@ -1,7 +1,8 @@
-import type { Tuning } from '../config/tuning';
+import type { AiArchetype, Tuning } from '../config/tuning';
 import { STRINGS_ZH } from '../content/strings.zh';
 import type { FountainSlotState } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
+import { drawMiniBirdAvatar } from './hud';
 import { roundRect, THEME_PALETTES } from './shared';
 
 export function drawButtIcon(
@@ -296,6 +297,74 @@ export function drawPlazaBackground(
   }
 }
 
+export function drawUndergroundPlugPipes(
+  ctx: CanvasRenderingContext2D,
+  nozzles: readonly FountainSlotState[],
+  pluggedSlotIndex: number,
+  plugRatio: number,
+  pluggerKind: 'player' | AiArchetype,
+  t: Tuning,
+  animTimeSec: number,
+): void {
+  const src = nozzles[pluggedSlotIndex];
+  if (!src) return;
+  const groundY = t.scene.groundY;
+  const pipeY = groundY + 7;
+  const pulse = 0.5 + 0.5 * Math.sin(animTimeSec * (14 + plugRatio * 18));
+  const ringColor =
+    pluggerKind === 'player'
+      ? '#fde047'
+      : pluggerKind === 'red_crest'
+        ? '#ef4444'
+        : pluggerKind === 'sparrow'
+          ? '#f59e0b'
+          : '#f8fafc';
+
+  for (const adjIdx of [pluggedSlotIndex - 1, pluggedSlotIndex + 1]) {
+    const dst = nozzles[adjIdx];
+    if (!dst) continue;
+
+    // Glowing underground pipe connecting plugged nozzle to adjacent target nozzle
+    ctx.save();
+    ctx.strokeStyle = `rgba(56, 189, 248, ${0.45 + pulse * 0.45})`;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(src.x, pipeY);
+    ctx.lineTo(dst.x, pipeY);
+    ctx.stroke();
+
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.lineDashOffset = -animTimeSec * 45 * (dst.x > src.x ? 1 : -1);
+    ctx.beginPath();
+    ctx.moveTo(src.x, pipeY);
+    ctx.lineTo(dst.x, pipeY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Red "!" + plugger avatar next to adjacent nozzle about to surge
+    const warnY = groundY - 96 + Math.sin(animTimeSec * 20) * 3;
+    ctx.fillStyle = '#ef4444';
+    ctx.strokeStyle = '#2B2B3A';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(dst.x - 10, warnY, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('!', dst.x - 10, warnY + 1);
+
+    drawMiniBirdAvatar(ctx, dst.x + 12, warnY, 10, pluggerKind);
+    ctx.restore();
+  }
+}
+
 export function drawSingleFountainJet(
   ctx: CanvasRenderingContext2D,
   n: FountainSlotState,
@@ -304,14 +373,23 @@ export function drawSingleFountainJet(
   plugRatio = 0,
   adjacentPlugRatio = 0,
   contested = false,
+  pluggerKind: 'player' | AiArchetype = 'player',
 ): void {
   const groundY = t.scene.groundY;
   const nx = n.x;
 
   if (n.phase === 'PLUGGED') {
     const pulse = 0.5 + 0.5 * Math.sin(animTimeSec * (16 + plugRatio * 24));
+    const ringRgb =
+      pluggerKind === 'red_crest'
+        ? '239, 68, 68'
+        : pluggerKind === 'sparrow'
+          ? '245, 158, 11'
+          : pluggerKind === 'white_pigeon'
+            ? '248, 250, 252'
+            : '250, 204, 21';
     ctx.save();
-    ctx.strokeStyle = `rgba(250, 204, 21, ${0.55 + pulse * 0.45})`;
+    ctx.strokeStyle = `rgba(${ringRgb}, ${0.55 + pulse * 0.45})`;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.ellipse(nx, groundY - 2, 22 + plugRatio * 8, 7 + plugRatio * 2, 0, 0, Math.PI * 2);
@@ -321,7 +399,7 @@ export function drawSingleFountainJet(
     ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
     roundRect(ctx, nx - 20, groundY + 14, 40, 6, 3);
     ctx.fill();
-    ctx.fillStyle = plugRatio >= 0.3 ? '#facc15' : '#38bdf8';
+    ctx.fillStyle = `rgb(${ringRgb})`;
     roundRect(ctx, nx - 19, groundY + 15, Math.max(4, 38 * plugRatio), 4, 2);
     ctx.fill();
     ctx.restore();

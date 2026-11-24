@@ -130,7 +130,7 @@ export function stepWorldVisualFx(
 }
 
 export function stepBirdSquashAndExpression(
-  player: PigeonBody & { bumpAnimSec: number; isJumping: boolean; expression: PlayerExpression },
+  player: PigeonBody & { bumpAnimSec: number; smugTimerSec: number; isJumping: boolean; expression: PlayerExpression },
   rivals: RivalBird[],
   match: MatchState,
   plug: PlugState,
@@ -173,6 +173,8 @@ export function stepBirdSquashAndExpression(
   );
   if (player.airborne) {
     player.expression = player.isJumping ? 'jump' : 'launched';
+  } else if (player.smugTimerSec > 0) {
+    player.expression = 'bliss';
   } else if (player.bumpAnimSec > 0) {
     player.expression = 'bump';
   } else if (dangerNear || plug.activeSlotIndex !== null) {

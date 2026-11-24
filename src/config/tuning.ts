@@ -191,6 +191,7 @@ export const tuning = {
     hintProximityPx: 120,
     maxDurationSec: 2.0,
     adjacentSurgeThresholdSec: 0.6,
+    aiPlugMinHoldSec: 0.8,
     bigUltControlBonus: 8,
     bigUltLaunchVy: -480,
     cooldownSec: 3.0,

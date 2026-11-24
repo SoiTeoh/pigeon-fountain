@@ -1,4 +1,19 @@
+import type { AiArchetype } from '../config/tuning';
 import type { InputMethod } from '../core/input';
+
+export const RIVAL_NAMES: Record<AiArchetype, string> = {
+  white_pigeon: '白胖',
+  sparrow: '麻雀',
+  red_crest: '红冠',
+};
+
+export function formatPluggedByRival(archetype: AiArchetype): string {
+  return `被${RIVAL_NAMES[archetype]}坑了！`;
+}
+
+export function formatPluggedRival(archetype: AiArchetype): string {
+  return `坑到${RIVAL_NAMES[archetype]}了！`;
+}
 
 export const STRINGS_ZH = {
   title: {

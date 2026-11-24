@@ -120,6 +120,15 @@ export function stepRivalsMovement(
     if (r.stunTimerSec > 0) {
       r.stunTimerSec = Math.max(0, r.stunTimerSec - dtSec);
     }
+    if (r.smugTimerSec > 0) {
+      r.smugTimerSec = Math.max(0, r.smugTimerSec - dtSec);
+    }
+
+    if (r.plugSlotIndex !== null) {
+      r.vx = 0;
+      r.waddlePhase += dtSec * 8;
+      continue;
+    }
 
     if (!r.airborne) {
       const decision = decideAiMove(

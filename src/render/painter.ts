@@ -13,6 +13,7 @@ import {
   drawPlazaBackground,
   drawPropsAndPickups,
   drawSingleFountainJet,
+  drawUndergroundPlugPipes,
 } from './plaza';
 import type { RenderExtra } from './shared';
 
@@ -31,10 +32,22 @@ export function drawGameFrame(
   drawPlazaBackground(ctx, world, t, extra.animTimeSec);
   drawPropsAndPickups(ctx, world, extra.animTimeSec);
 
+  // Resolve active plugger (player or rival) for unified visuals & underground pipes
+  const pluggingRival = world.rivals.find((r) => r.plugSlotIndex !== null);
+  const activePlugSlot =
+    world.plug.activeSlotIndex ?? pluggingRival?.plugSlotIndex ?? null;
   const plugRatio =
     world.plug.activeSlotIndex !== null
       ? Math.min(1, world.plug.holdSec / t.plug.maxDurationSec)
-      : 0;
+      : pluggingRival
+        ? Math.min(1, pluggingRival.plugHoldSec / t.plug.maxDurationSec)
+        : 0;
+  const pluggerKind =
+    world.plug.activeSlotIndex !== null
+      ? 'player'
+      : pluggingRival
+        ? pluggingRival.archetype
+        : 'player';
 
   const rivalXs = world.rivals.map((r) => (r.respawnTimerSec > 0 ? -999 : r.x));
   const rivalAirbornes = world.rivals.map(
@@ -42,10 +55,10 @@ export function drawGameFrame(
   );
 
   for (const n of world.match.nozzles) {
-    const isPlugged = world.plug.activeSlotIndex === n.slotIndex;
+    const isPlugged = activePlugSlot === n.slotIndex;
     const isAdjacent =
-      world.plug.activeSlotIndex !== null &&
-      Math.abs(n.slotIndex - world.plug.activeSlotIndex) === 1;
+      activePlugSlot !== null &&
+      Math.abs(n.slotIndex - activePlugSlot) === 1;
     const isContested =
       n.phase === 'ACTIVE' &&
       evaluateNozzleOccupant(
@@ -64,6 +77,19 @@ export function drawGameFrame(
       isPlugged ? plugRatio : 0,
       isAdjacent ? plugRatio : 0,
       isContested,
+      pluggerKind,
+    );
+  }
+
+  if (activePlugSlot !== null) {
+    drawUndergroundPlugPipes(
+      ctx,
+      world.match.nozzles,
+      activePlugSlot,
+      plugRatio,
+      pluggerKind,
+      t,
+      extra.animTimeSec,
     );
   }
 
@@ -102,25 +128,36 @@ export function drawGameFrame(
       (n) => n.phase === 'ACTIVE' && Math.abs(r.x - n.x) <= t.fountain.coreRadiusPx,
     );
     const expr: RivalBird['intent'] extends string
-      ? 'launched' | 'stunned' | 'charge' | 'bliss' | 'grumpy'
+      ? 'launched' | 'stunned' | 'charge' | 'bliss' | 'grumpy' | 'panic'
       : never = r.airborne
       ? 'launched'
       : r.stunTimerSec > 0
         ? 'stunned'
-        : r.redCrestState === 'charging' || r.redCrestState === 'lunging'
-          ? 'charge'
-          : onActive
+        : r.plugSlotIndex !== null
+          ? 'panic'
+          : r.smugTimerSec > 0
             ? 'bliss'
-            : 'grumpy';
+            : r.redCrestState === 'charging' || r.redCrestState === 'lunging'
+              ? 'charge'
+              : onActive
+                ? 'bliss'
+                : 'grumpy';
+
+    const rivalPlugRatio =
+      r.plugSlotIndex !== null ? Math.min(1, r.plugHoldSec / t.plug.maxDurationSec) : 0;
+    const rivalJitterX =
+      r.plugSlotIndex !== null
+        ? Math.sin(extra.animTimeSec * (45 + rivalPlugRatio * 40)) * (1.2 + rivalPlugRatio * 4.5)
+        : 0;
 
     drawBird(ctx, {
-      x: r.x,
+      x: r.x + rivalJitterX,
       y: r.y,
       facing: r.facing,
       spinRad: r.spinRad,
       waddlePhase: r.waddlePhase,
-      squashX: r.squashX,
-      squashY: r.squashY,
+      squashX: r.squashX + (r.plugSlotIndex !== null ? rivalPlugRatio * 0.14 : 0),
+      squashY: r.squashY - (r.plugSlotIndex !== null ? rivalPlugRatio * 0.1 : 0),
       kind: r.archetype,
       expression: expr,
       bumpActive: r.redCrestState === 'lunging',
