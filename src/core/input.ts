@@ -1,4 +1,23 @@
+import { tuning, type Tuning } from '../config/tuning';
 import type { WorldStepInput } from '../game/world';
+
+export type ContextActionKind = 'bump' | 'jump' | 'slam';
+
+export function resolveContextAction(
+  playerX: number,
+  playerAirborne: boolean,
+  rivals: readonly { x: number; airborne: boolean; respawnTimerSec: number }[],
+  t: Tuning = tuning,
+): ContextActionKind {
+  if (playerAirborne) return 'slam';
+  const hasNearRival = rivals.some(
+    (r) =>
+      !r.airborne &&
+      r.respawnTimerSec <= 0 &&
+      Math.abs(r.x - playerX) <= t.pigeon.bumpReachPx,
+  );
+  return hasNearRival ? 'bump' : 'jump';
+}
 
 export type InputMethod = 'touch' | 'keyboard';
 
@@ -7,10 +26,11 @@ export interface UnifiedInput {
   readonly moveAxis: -1 | 0 | 1;
   readonly action: boolean;
   readonly jump: boolean;
+  readonly slam?: boolean;
 }
 
 interface PointerMoveEntry {
-  dir: -1 | 1;
+  dir: -1 | 0 | 1;
   zoneOnly: boolean;
   targetX: number | null;
 }
@@ -20,6 +40,7 @@ export class InputController {
   private readonly heldKeys = new Set<string>();
   private actionQueued = false;
   private jumpQueued = false;
+  private slamQueued = false;
   private lastInputMethod: InputMethod;
 
   constructor(initialMethod: InputMethod = 'touch') {
@@ -39,11 +60,12 @@ export class InputController {
     this.heldKeys.clear();
     this.actionQueued = false;
     this.jumpQueued = false;
+    this.slamQueued = false;
   }
 
   setMovePointer(
     pointerId: number,
-    dir: -1 | 1,
+    dir: -1 | 0 | 1,
     zoneOnly: boolean,
     targetX: number | null = null,
     pointerType?: string,
@@ -56,7 +78,7 @@ export class InputController {
 
   updateMovePointer(
     pointerId: number,
-    dir: -1 | 1,
+    dir: -1 | 0 | 1,
     targetX: number | null = null,
   ): void {
     const entry = this.movePointers.get(pointerId);
@@ -87,6 +109,13 @@ export class InputController {
     this.jumpQueued = true;
   }
 
+  queueSlam(pointerType?: string): void {
+    if (pointerType === 'touch' || pointerType === 'pen' || pointerType === 'mouse') {
+      this.lastInputMethod = 'touch';
+    }
+    this.slamQueued = true;
+  }
+
   onKeyDown(code: string, repeat = false): void {
     this.lastInputMethod = 'keyboard';
     if (code === 'Space' && !repeat) {
@@ -112,7 +141,7 @@ export class InputController {
     if (this.heldKeys.has('KeyA') || this.heldKeys.has('ArrowLeft')) dir -= 1;
     if (this.heldKeys.has('KeyD') || this.heldKeys.has('ArrowRight')) dir += 1;
     if (dir === 0 && this.movePointers.size > 0) {
-      let latestDir: -1 | 1 = 1;
+      let latestDir: -1 | 0 | 1 = 0;
       for (const entry of this.movePointers.values()) {
         latestDir = entry.dir;
       }
@@ -138,9 +167,11 @@ export class InputController {
       moveAxis: this.peekMoveAxis(),
       action: this.actionQueued,
       jump: this.jumpQueued,
+      slam: this.slamQueued,
     };
     this.actionQueued = false;
     this.jumpQueued = false;
+    this.slamQueued = false;
     return input;
   }
 }
@@ -150,5 +181,7 @@ export function toWorldStepInput(input: UnifiedInput): WorldStepInput {
     moveDir: input.moveAxis,
     bumpPressed: input.action,
     jumpPressed: input.jump,
+    slamPressed: Boolean(input.slam),
+    moveTargetX: input.moveTargetX,
   };
 }

@@ -11,6 +11,7 @@ export interface PlayerProgress {
   readonly stars: Record<StageId, 0 | 1 | 2 | 3>;
   readonly stageBestScores: Record<StageId, number>;
   readonly endlessBestScore: number;
+  readonly classicFourButtons: boolean;
 }
 
 const PROGRESS_STORAGE_KEY = 'pigeon_fountain_progress_v2';
@@ -43,6 +44,7 @@ export function createInitialProgress(): PlayerProgress {
     stars: { 1: 0, 2: 0, 3: 0, 4: 0 },
     stageBestScores: { 1: 0, 2: 0, 3: 0, 4: 0 },
     endlessBestScore: 0,
+    classicFourButtons: false,
   };
 }
 
@@ -79,6 +81,7 @@ export function sanitizeProgress(raw: unknown): PlayerProgress {
       4: sanitizeScore(obj.stageBestScores?.[4]),
     },
     endlessBestScore: sanitizeScore(obj.endlessBestScore),
+    classicFourButtons: Boolean(obj.classicFourButtons),
   };
 }
 

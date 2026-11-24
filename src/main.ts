@@ -1,6 +1,6 @@
 import './style.css';
 import { STAGES, tuning } from './config/tuning';
-import { InputController, toWorldStepInput } from './core/input';
+import { InputController, resolveContextAction, toWorldStepInput } from './core/input';
 import { ReplayRecorder } from './core/replay';
 import { generateRandomSeed } from './core/rng';
 import { SoundEngine } from './game/audio';
@@ -191,6 +191,13 @@ function main(): void {
       } else if (hitRect(pt, ui.homeBtn)) {
         sound.playUiClick();
         returnToHome();
+      } else if (hitRect(pt, ui.controlToggleBtn)) {
+        sound.playUiClick();
+        progress = {
+          ...progress,
+          classicFourButtons: !progress.classicFourButtons,
+        };
+        writeProgress(progress);
       }
       return;
     }
@@ -230,49 +237,57 @@ function main(): void {
       return;
     }
 
-    // Right-thumb skill buttons (do NOT overwrite left-thumb movement!)
-    if (hitCircle(pt, tuning.ui.controls.jumpBtn, 8)) {
-      inputController.queueJump(e.pointerType);
-      return;
-    }
-    if (hitCircle(pt, tuning.ui.controls.bumpBtn, 8)) {
-      inputController.queueAction(e.pointerType);
-      return;
-    }
-
-    // Left-thumb directional buttons
-    if (hitCircle(pt, tuning.ui.controls.leftBtn, 8)) {
-      inputController.setMovePointer(e.pointerId, -1, false, pt.x, e.pointerType);
-      try {
-        canvas.setPointerCapture(e.pointerId);
-      } catch {
-        // Ignore synthetic pointer events
+    if (progress.classicFourButtons) {
+      // Classic 4-button layout
+      if (hitCircle(pt, tuning.ui.controls.jumpBtn, 8)) {
+        inputController.queueJump(e.pointerType);
+        return;
       }
-      return;
-    }
-    if (hitCircle(pt, tuning.ui.controls.rightBtn, 8)) {
-      inputController.setMovePointer(e.pointerId, 1, false, pt.x, e.pointerType);
-      try {
-        canvas.setPointerCapture(e.pointerId);
-      } catch {
-        // Ignore synthetic pointer events
+      if (hitCircle(pt, tuning.ui.controls.bumpBtn, 8)) {
+        inputController.queueAction(e.pointerType);
+        return;
       }
-      return;
-    }
+      if (hitCircle(pt, tuning.ui.controls.leftBtn, 8)) {
+        inputController.setMovePointer(e.pointerId, -1, false, pt.x, e.pointerType);
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore synthetic pointer events
+        }
+        return;
+      }
+      if (hitCircle(pt, tuning.ui.controls.rightBtn, 8)) {
+        inputController.setMovePointer(e.pointerId, 1, false, pt.x, e.pointerType);
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore synthetic pointer events
+        }
+        return;
+      }
+    } else {
+      // Default: Drag + single context action button
+      if (hitCircle(pt, tuning.ui.controls.actionBtn, 10)) {
+        const ctxKind = resolveContextAction(
+          world.player.x,
+          world.player.airborne,
+          world.rivals,
+          tuning,
+        );
+        if (ctxKind === 'slam') inputController.queueSlam(e.pointerType);
+        else if (ctxKind === 'bump') inputController.queueAction(e.pointerType);
+        else inputController.queueJump(e.pointerType);
+        return;
+      }
 
-    // Fallback: mid/upper-canvas left/right hold
-    if (pt.y < 516) {
-      inputController.setMovePointer(
-        e.pointerId,
-        pt.x < tuning.view.width / 2 ? -1 : 1,
-        true,
-        pt.x,
-        e.pointerType,
-      );
-      try {
-        canvas.setPointerCapture(e.pointerId);
-      } catch {
-        // Ignore synthetic pointer events
+      if (pt.y >= tuning.ui.controls.dragZoneMinY) {
+        inputController.setMovePointer(e.pointerId, 0, true, pt.x, e.pointerType);
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore synthetic pointer events
+        }
+        return;
       }
     }
   }
@@ -283,11 +298,7 @@ function main(): void {
     if (!entry) return;
     const pt = toLogicalCoords(e.clientX, e.clientY);
     if (entry.zoneOnly) {
-      inputController.updateMovePointer(
-        e.pointerId,
-        pt.x < tuning.view.width / 2 ? -1 : 1,
-        pt.x,
-      );
+      inputController.updateMovePointer(e.pointerId, 0, pt.x);
     } else if (hitCircle(pt, tuning.ui.controls.leftBtn, 14)) {
       inputController.updateMovePointer(e.pointerId, -1, pt.x);
     } else if (hitCircle(pt, tuning.ui.controls.rightBtn, 14)) {
@@ -345,6 +356,19 @@ function main(): void {
     if (sceneManager.mode !== 'playing') return;
 
     sound.unlock();
+    if (e.code === 'Space' && !e.repeat && !progress.classicFourButtons) {
+      const ctxKind = resolveContextAction(
+        world.player.x,
+        world.player.airborne,
+        world.rivals,
+        tuning,
+      );
+      inputController.setInputMethod('keyboard');
+      if (ctxKind === 'slam') inputController.queueSlam();
+      else if (ctxKind === 'bump') inputController.queueAction();
+      else inputController.queueJump();
+      return;
+    }
     inputController.onKeyDown(e.code, e.repeat);
   }
 
@@ -476,6 +500,7 @@ function main(): void {
         leftPressed: activeDir === -1,
         rightPressed: activeDir === 1,
         lastInputMethod: inputController.getLastInputMethod(),
+        classicFourButtons: progress.classicFourButtons,
       },
       tuning,
     );

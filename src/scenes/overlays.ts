@@ -186,18 +186,23 @@ export function drawPauseOverlay(
   ctx.font = '900 22px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(STRINGS_ZH.pause.heading, width / 2, 212);
+  ctx.fillText(STRINGS_ZH.pause.heading, width / 2, 190);
+
+  const modeLabel = extra.classicFourButtons
+    ? STRINGS_ZH.pause.modeClassic
+    : STRINGS_ZH.pause.modeDrag;
 
   for (const [btn, label, bg, fg] of [
     [ui.resumeBtn, STRINGS_ZH.pause.resume, '#10b981', '#ffffff'],
     [ui.restartBtn, restartLabel, '#f59e0b', '#0f172a'],
     [ui.homeBtn, STRINGS_ZH.pause.home, '#e2e8f0', '#334155'],
+    [ui.controlToggleBtn, modeLabel, '#e0f2fe', '#0369a1'],
   ] as const) {
     ctx.fillStyle = bg;
     roundRect(ctx, btn.x, btn.y, btn.w, btn.h, btn.r);
     ctx.fill();
     ctx.fillStyle = fg;
-    ctx.font = '800 16px sans-serif';
+    ctx.font = btn === ui.controlToggleBtn ? '800 13.5px sans-serif' : '800 16px sans-serif';
     ctx.fillText(label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
   }
 }

@@ -67,6 +67,8 @@ export const tuning = {
       rightBtn: { x: 112, y: 572, r: 26 },
       jumpBtn: { x: 264, y: 574, r: 25 },
       bumpBtn: { x: 336, y: 568, r: 32 },
+      actionBtn: { x: 324, y: 562, r: 42 },
+      dragZoneMinY: 320,
     },
     title: {
       card: { x: 22, y: 54, w: 346, h: 528, r: 22 },
@@ -80,10 +82,11 @@ export const tuning = {
       startBtn: { x: 54, y: 498, w: 282, h: 52, r: 16 },
     },
     pause: {
-      card: { x: 44, y: 168, w: 302, h: 284, r: 22 },
-      resumeBtn: { x: 74, y: 254, w: 242, h: 46, r: 14 },
-      restartBtn: { x: 74, y: 314, w: 242, h: 46, r: 14 },
-      homeBtn: { x: 74, y: 374, w: 242, h: 46, r: 14 },
+      card: { x: 44, y: 148, w: 302, h: 340, r: 22 },
+      resumeBtn: { x: 74, y: 230, w: 242, h: 46, r: 14 },
+      restartBtn: { x: 74, y: 290, w: 242, h: 46, r: 14 },
+      homeBtn: { x: 74, y: 350, w: 242, h: 46, r: 14 },
+      controlToggleBtn: { x: 74, y: 414, w: 242, h: 44, r: 12 },
     },
     result: {
       card: { x: 24, y: 84, w: 342, h: 468, r: 22 },

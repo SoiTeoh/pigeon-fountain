@@ -14,6 +14,7 @@ export interface RenderExtra {
   readonly leftPressed: boolean;
   readonly rightPressed: boolean;
   readonly lastInputMethod: InputMethod;
+  readonly classicFourButtons: boolean;
 }
 
 export interface ThemePalette {
