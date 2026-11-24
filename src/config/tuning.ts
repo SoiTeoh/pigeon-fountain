@@ -26,6 +26,7 @@ export interface StageConfig {
   readonly durationSec: number;
   readonly targetScore: number;
   readonly starThresholds: readonly [number, number, number];
+  readonly rivalGainMult: number;
   readonly nozzleXs: readonly number[];
   readonly grateLeftX: number;
   readonly grateRightX: number;
@@ -161,13 +162,20 @@ export const tuning = {
     pickupRadius: 24,
   },
   scoring: {
-    stageDurationSec: 50,
+    stageDurationSec: 60,
     endlessDurationSec: 60,
-    maxFeathers: 3,
     basePointsPerSec: 30,
     combo2Sec: 1.3,
     combo3Sec: 2.7,
     sabotageBonus: 150,
+  },
+  control: {
+    maxControl: 100,
+    baseGainPerSec: 4,
+    comboMultipliers: [1, 1.5, 2] as const,
+    surgePenalty: 10,
+    flashThreshold: 80,
+    raceDurationSec: 60,
   },
 } as const;
 
@@ -176,11 +184,12 @@ export const STAGES: Record<StageId, StageConfig> = {
     id: 1,
     title: 'Stage 1 · 小区街角小喷泉',
     shortName: '1. 街角小泉',
-    subtitle: '教学抢位 · 顶晕白鸽送进红 ! 砸倒纸杯塔',
+    subtitle: '霸占赛跑 · 稳住屁股抢先满 100',
     theme: 'neighborhood',
-    durationSec: 50,
+    durationSec: 60,
     targetScore: 350,
     starThresholds: [350, 550, 800],
+    rivalGainMult: 0.7,
     nozzleXs: [105, 195, 285],
     grateLeftX: 62,
     grateRightX: 328,
@@ -237,9 +246,10 @@ export const STAGES: Record<StageId, StageConfig> = {
     shortName: '2. 音乐喷泉',
     subtitle: '双喷口 + 32°斜喷泉 · 麻雀群 & 大妈玉米粒',
     theme: 'park',
-    durationSec: 50,
+    durationSec: 60,
     targetScore: 650,
     starThresholds: [650, 950, 1250],
+    rivalGainMult: 0.85,
     nozzleXs: [96, 162, 228, 294],
     grateLeftX: 58,
     grateRightX: 332,
@@ -296,9 +306,10 @@ export const STAGES: Record<StageId, StageConfig> = {
     shortName: '3. 网红地泉',
     subtitle: '暴躁红冠鸽蓄力反冲 · 气球车 & 咖啡杯架',
     theme: 'commercial',
-    durationSec: 50,
+    durationSec: 60,
     targetScore: 950,
     starThresholds: [950, 1300, 1700],
+    rivalGainMult: 0.95,
     nozzleXs: [96, 162, 228, 294],
     grateLeftX: 58,
     grateRightX: 332,
@@ -367,9 +378,10 @@ export const STAGES: Record<StageId, StageConfig> = {
     shortName: '4. 狂欢夜泉',
     subtitle: '5 喷口波浪连环喷 · 全员鸽雀大混战',
     theme: 'carnival',
-    durationSec: 50,
+    durationSec: 60,
     targetScore: 1300,
     starThresholds: [1300, 1750, 2250],
+    rivalGainMult: 1.05,
     nozzleXs: [82, 138, 195, 252, 308],
     grateLeftX: 54,
     grateRightX: 336,
@@ -443,6 +455,7 @@ export const ENDLESS_STAGE: StageConfig = {
   durationSec: 60,
   targetScore: 0,
   starThresholds: [800, 1400, 2000],
+  rivalGainMult: 0.9,
   nozzleXs: [82, 138, 195, 252, 308],
   grateLeftX: 54,
   grateRightX: 336,

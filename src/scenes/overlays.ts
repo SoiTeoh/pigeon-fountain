@@ -1,6 +1,10 @@
 import { STAGES, type Tuning } from '../config/tuning';
 import { showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
-import { evaluateStageStars } from '../game/rules';
+import {
+  didPlayerWinRace,
+  evaluateStageStars,
+  getMaxRivalControl,
+} from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
 import type { StageId } from '../platform/storage';
 import { roundRect, type RenderExtra } from '../render/shared';
@@ -87,7 +91,7 @@ export function drawTitleOverlay(
         ctx.fillStyle = '#64748b';
         ctx.font = '700 9.5px sans-serif';
         ctx.fillText(
-          best > 0 ? `最高 ${best}` : `目标 ${STAGES[sid].targetScore}`,
+          best > 0 ? `最高 ${best}%` : '抢先满 100',
           sx + ui.stageCardW / 2,
           sy + 77,
           ui.stageCardW - 10,
@@ -106,7 +110,7 @@ export function drawTitleOverlay(
     ctx.fillStyle = '#0f172a';
     ctx.font = '800 13px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`${stage.title}（目标 ${stage.targetScore} 分）`, 50, 328);
+    ctx.fillText(`${stage.title}（${stage.durationSec}秒赛跑）`, 50, 328);
     ctx.fillStyle = '#64748b';
     ctx.font = '500 11.5px sans-serif';
     ctx.fillText(stage.subtitle, 50, 348);
@@ -207,10 +211,11 @@ export function drawResultOverlay(
   const { width, height } = t.view;
   const { match, stage } = world;
   const ui = t.ui.result;
-  const stars =
-    match.mode === 'stage' ? evaluateStageStars(match.score, match.endReason, stage) : 0;
+  const stars = match.mode === 'stage' ? evaluateStageStars(match, stage) : 0;
   const stageCleared = match.mode === 'stage' && stars >= 1;
   const hasNextStage = stageCleared && match.stageId < 4;
+  const maxRivalCtrl = getMaxRivalControl(match);
+  const wonRace = didPlayerWinRace(match);
 
   ctx.fillStyle = 'rgba(15, 23, 42, 0.68)';
   ctx.fillRect(0, 0, width, height);
@@ -224,13 +229,13 @@ export function drawResultOverlay(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const headline =
-    match.endReason === 'feathers_zero'
-      ? '尾羽掉光啦！'
-      : match.mode === 'endless'
-        ? '无尽乱斗账单'
-        : stageCleared
-          ? `第 ${match.stageId} 关制霸成功！`
-          : `差一点达到 ${stage.targetScore} 分`;
+    match.mode === 'endless'
+      ? '无尽乱斗账单'
+      : wonRace
+        ? `第 ${match.stageId} 关制霸成功！`
+        : match.endReason === 'rival_full'
+          ? '被对手抢先满 100！'
+          : '时间到，惜败！';
   ctx.fillText(headline, width / 2, 124);
 
   if (match.mode === 'stage') {
@@ -240,22 +245,32 @@ export function drawResultOverlay(
     ctx.fillText(starStr, width / 2, 162);
   }
 
-  ctx.fillStyle = '#ea580c';
-  ctx.font = '900 34px sans-serif';
-  ctx.fillText(`${Math.floor(match.score)} 分`, width / 2, match.mode === 'stage' ? 204 : 182);
-
-  const bestScore =
+  ctx.fillStyle = match.mode === 'stage' ? (wonRace ? '#0284c7' : '#ef4444') : '#ea580c';
+  ctx.font = '900 30px sans-serif';
+  ctx.fillText(
     match.mode === 'stage'
-      ? Math.max(extra.progress.stageBestScores[match.stageId], Math.floor(match.score))
-      : Math.max(extra.progress.endlessBestScore, Math.floor(match.score));
+      ? `我方 ${Math.round(match.playerControl)}% vs ${Math.round(maxRivalCtrl)}%`
+      : `${Math.floor(match.score)} 分`,
+    width / 2,
+    match.mode === 'stage' ? 204 : 182,
+  );
 
-  const rows = [
-    ['占领喷泉时长', `${match.soakSec.toFixed(1)} 秒`],
-    ['使坏轰飞对手', `${match.sabotageCount} 次`],
-    ['道具连锁爆破', `${match.propSmashCount} 次`],
-    ['铁臀墩坐 / 最高连击', `${match.slamCount} 次 / ×${match.maxCombo}`],
-    ['本关最高纪录', `${bestScore} 分`],
-  ];
+  const rows =
+    match.mode === 'stage'
+      ? [
+          ['占领喷泉时长', `${match.soakSec.toFixed(1)} 秒`],
+          ['使坏轰飞对手', `${match.sabotageCount} 次`],
+          ['被暴喷轰飞', `${match.playerSurgeHits} 次`],
+          ['铁臀墩坐 / 最高连击', `${match.slamCount} 次 / ×${match.maxCombo}`],
+          ['用时', `${match.elapsedSec.toFixed(1)} 秒`],
+        ]
+      : [
+          ['占领喷泉时长', `${match.soakSec.toFixed(1)} 秒`],
+          ['使坏轰飞对手', `${match.sabotageCount} 次`],
+          ['道具连锁爆破', `${match.propSmashCount} 次`],
+          ['铁臀墩坐 / 最高连击', `${match.slamCount} 次 / ×${match.maxCombo}`],
+          ['本局最高纪录', `${Math.max(extra.progress.endlessBestScore, Math.floor(match.score))} 分`],
+        ];
   rows.forEach(([label, val], idx) => {
     const ry = 246 + idx * 32;
     ctx.fillStyle = '#f8fafc';

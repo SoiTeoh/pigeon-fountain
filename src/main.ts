@@ -199,7 +199,7 @@ function main(): void {
       const ui = tuning.ui.result;
       const stageCleared =
         world.match.mode === 'stage' &&
-        evaluateStageStars(world.match.score, world.match.endReason, STAGES[world.match.stageId]) >= 1;
+        evaluateStageStars(world.match, STAGES[world.match.stageId]) >= 1;
       const hasNext = stageCleared && world.match.stageId < 4;
 
       if (hasNext && hitRect(pt, ui.primaryBtn)) {
@@ -332,7 +332,7 @@ function main(): void {
       } else if (e.code === 'Enter' && !e.repeat) {
         const stageCleared =
           world.match.mode === 'stage' &&
-          evaluateStageStars(world.match.score, world.match.endReason, STAGES[world.match.stageId]) >= 1;
+          evaluateStageStars(world.match, STAGES[world.match.stageId]) >= 1;
         if (stageCleared && world.match.stageId < 4) {
           startNewGame('stage', (world.match.stageId + 1) as StageId);
         } else {
@@ -431,12 +431,13 @@ function main(): void {
       sceneManager.transitionTo('result');
       clearInputs();
       if (world.match.mode === 'stage') {
-        const stars = evaluateStageStars(
-          world.match.score,
-          world.match.endReason,
-          STAGES[world.match.stageId],
+        const stars = evaluateStageStars(world.match, STAGES[world.match.stageId]);
+        progress = applyStageCompletion(
+          progress,
+          world.match.stageId,
+          Math.round(world.match.playerControl),
+          stars,
         );
-        progress = applyStageCompletion(progress, world.match.stageId, world.match.score, stars);
       } else {
         progress = applyEndlessCompletion(progress, world.match.score);
       }

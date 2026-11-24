@@ -961,6 +961,7 @@ export class PigeonFountainWorld {
           id: r.id,
           x: r.respawnTimerSec > 0 ? -999 : r.x,
           airborne: r.airborne || r.respawnTimerSec > 0,
+          stunned: r.stunTimerSec > 0,
         })),
       },
       this.t,
@@ -981,7 +982,13 @@ export class PigeonFountainWorld {
       this.player.vx = (this.player.x < (nozzle?.x ?? 195) ? -1 : 1) * 105;
       this.shakeMag = Math.max(this.shakeMag, 9);
       this.spawnBurst(this.player.x, this.t.scene.groundY - 20, 10, 'feather_dark', '#334155', 70, 210);
-      this.addFloat(this.player.x, this.t.scene.groundY - 76, '哎呀！-1尾羽', '#ef4444', 1.1);
+      this.addFloat(
+        this.player.x,
+        this.t.scene.groundY - 76,
+        `哎呀！-${this.t.control.surgePenalty}`,
+        '#ef4444',
+        1.1,
+      );
     }
 
     const aiHitBySurge = ruleRes.rivalsHitBySurge.length > 0;

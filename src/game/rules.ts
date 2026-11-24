@@ -46,12 +46,20 @@ export interface PropState {
   readonly respawnTimerSec: number;
 }
 
+export interface RivalControlState {
+  readonly id: number;
+  readonly archetype: AiArchetype;
+  readonly control: number;
+}
+
 export interface MatchState {
   readonly mode: GameMode;
   readonly stageId: StageId;
   readonly remainingSec: number;
   readonly elapsedSec: number;
-  readonly feathers: number;
+  readonly playerControl: number;
+  readonly rivalControls: readonly RivalControlState[];
+  readonly playerSurgeHits: number;
   readonly score: number;
   readonly soakSec: number;
   readonly playerHoldSec: number;
@@ -65,13 +73,14 @@ export interface MatchState {
   readonly waveQueue: readonly number[];
   readonly waveStaggerSec: number;
   readonly finished: boolean;
-  readonly endReason: 'none' | 'feathers_zero' | 'time_up';
+  readonly endReason: 'none' | 'player_full' | 'rival_full' | 'time_up';
 }
 
 export interface RivalPositionSample {
   readonly id: number;
   readonly x: number;
   readonly airborne: boolean;
+  readonly stunned?: boolean;
 }
 
 export interface MatchStepInput {
@@ -105,17 +114,36 @@ export function computeComboMultiplier(holdSec: number, t: Tuning = tuning): 1 |
   return 1;
 }
 
+export function computeControlRateMultiplier(combo: 1 | 2 | 3, t: Tuning = tuning): number {
+  return t.control.comboMultipliers[combo - 1] ?? 1;
+}
+
+export function getMaxRivalControl(state: MatchState): number {
+  let maxCtrl = 0;
+  for (const r of state.rivalControls) {
+    if (r.control > maxCtrl) maxCtrl = r.control;
+  }
+  return maxCtrl;
+}
+
+export function didPlayerWinRace(state: MatchState): boolean {
+  if (state.endReason === 'player_full') return true;
+  if (state.endReason === 'rival_full') return false;
+  if (state.endReason === 'time_up') {
+    return state.playerControl >= getMaxRivalControl(state);
+  }
+  return false;
+}
+
 export function evaluateStageStars(
-  score: number,
-  endReason: MatchState['endReason'],
-  stage: StageConfig,
+  state: MatchState,
+  _stage?: StageConfig,
 ): 0 | 1 | 2 | 3 {
-  if (endReason === 'feathers_zero') return 0;
-  const [s1, s2, s3] = stage.starThresholds;
-  if (score >= s3) return 3;
-  if (score >= s2) return 2;
-  if (score >= s1) return 1;
-  return 0;
+  if (!didPlayerWinRace(state)) return 0;
+  const lead = state.playerControl - getMaxRivalControl(state);
+  if (lead >= 30 && state.playerSurgeHits === 0) return 3;
+  if (lead >= 20 || state.playerSurgeHits === 0) return 2;
+  return 1;
 }
 
 export function getStageForMatch(mode: GameMode, stageId: StageId): StageConfig {
@@ -156,7 +184,13 @@ export function createInitialMatchState(
     stageId,
     remainingSec: stage.durationSec,
     elapsedSec: 0,
-    feathers: t.scoring.maxFeathers,
+    playerControl: 0,
+    rivalControls: stage.rivals.map((archetype, id) => ({
+      id,
+      archetype,
+      control: 0,
+    })),
+    playerSurgeHits: 0,
     score: 0,
     soakSec: 0,
     playerHoldSec: 0,
@@ -256,7 +290,9 @@ export function stepMatchState(
   let playerHitBySurgeSlot: number | null = null;
   const rivalsHitBySurge: { rivalId: number; slotIndex: number }[] = [];
 
-  let feathers = prev.feathers;
+  let playerControl = prev.playerControl;
+  const rivalControls = prev.rivalControls.map((r) => ({ ...r }));
+  let playerSurgeHits = prev.playerSurgeHits;
   let score = prev.score;
   let soakSec = prev.soakSec;
   let playerHoldSec = prev.playerHoldSec;
@@ -392,7 +428,8 @@ export function stepMatchState(
             Math.abs(input.playerX - slot.x) <= t.fountain.coreRadiusPx + 4
           ) {
             playerHitBySurgeSlot = slot.slotIndex;
-            feathers = Math.max(0, feathers - 1);
+            playerControl = Math.max(0, playerControl - t.control.surgePenalty);
+            playerSurgeHits += 1;
             playerHoldSec = 0;
           }
           for (const rival of input.rivals) {
@@ -402,6 +439,10 @@ export function stepMatchState(
               !rivalsHitBySurge.some((r) => r.rivalId === rival.id)
             ) {
               rivalsHitBySurge.push({ rivalId: rival.id, slotIndex: slot.slotIndex });
+              const rc = rivalControls.find((entry) => entry.id === rival.id);
+              if (rc) {
+                rc.control = Math.max(0, rc.control - t.control.surgePenalty);
+              }
               sabotageCount += 1;
               score += t.scoring.sabotageBonus;
             }
@@ -476,10 +517,11 @@ export function stepMatchState(
 
   // Evaluate multi-nozzle occupancy during ACTIVE
   const rivalXs = input.rivals.map((r) => r.x);
-  const rivalAirbornes = input.rivals.map((r) => r.airborne);
+  const rivalAirbornes = input.rivals.map((r) => r.airborne || Boolean(r.stunned));
   let occupant: Occupant = 'none';
   let occupiedSlotIndex: number | null = null;
   let bestPlayerDist = Number.POSITIVE_INFINITY;
+  const gainingRivalIds = new Set<number>();
 
   for (const nozzle of nozzles) {
     if (nozzle.phase !== 'ACTIVE') continue;
@@ -498,8 +540,17 @@ export function stepMatchState(
         occupant = 'player';
         occupiedSlotIndex = nozzle.slotIndex;
       }
-    } else if (occ === 'ai' && occupant === 'none') {
-      occupant = 'ai';
+    } else if (occ === 'ai') {
+      if (occupant === 'none') occupant = 'ai';
+      for (const rival of input.rivals) {
+        if (
+          !rival.airborne &&
+          !rival.stunned &&
+          Math.abs(rival.x - nozzle.x) <= t.fountain.coreRadiusPx
+        ) {
+          gainingRivalIds.add(rival.id);
+        }
+      }
     }
   }
 
@@ -508,6 +559,12 @@ export function stepMatchState(
     playerHoldSec += dtSec;
     const combo = computeComboMultiplier(playerHoldSec, t);
     if (combo > maxCombo) maxCombo = combo;
+    const rateMult = computeControlRateMultiplier(combo, t);
+    playerControl = clamp(
+      playerControl + t.control.baseGainPerSec * rateMult * dtSec,
+      0,
+      t.control.maxControl,
+    );
     score += t.scoring.basePointsPerSec * combo * dtSec;
   } else {
     const anyActive = nozzles.some((n) => n.phase === 'ACTIVE');
@@ -516,12 +573,26 @@ export function stepMatchState(
     }
   }
 
+  for (const rivalId of gainingRivalIds) {
+    const rc = rivalControls.find((entry) => entry.id === rivalId);
+    if (rc) {
+      rc.control = clamp(
+        rc.control + t.control.baseGainPerSec * stage.rivalGainMult * dtSec,
+        0,
+        t.control.maxControl,
+      );
+    }
+  }
+
   const combo = computeComboMultiplier(playerHoldSec, t);
   let finished = false;
   let endReason: MatchState['endReason'] = 'none';
-  if (feathers <= 0) {
+  if (playerControl >= t.control.maxControl) {
     finished = true;
-    endReason = 'feathers_zero';
+    endReason = 'player_full';
+  } else if (rivalControls.some((r) => r.control >= t.control.maxControl)) {
+    finished = true;
+    endReason = 'rival_full';
   } else if (nextRemaining <= 0) {
     finished = true;
     endReason = 'time_up';
@@ -533,7 +604,9 @@ export function stepMatchState(
       stageId: prev.stageId,
       remainingSec: nextRemaining,
       elapsedSec: nextElapsed,
-      feathers,
+      playerControl,
+      rivalControls,
+      playerSurgeHits,
       score,
       soakSec,
       playerHoldSec,

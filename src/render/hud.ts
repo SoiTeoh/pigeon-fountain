@@ -1,7 +1,8 @@
-import type { Tuning } from '../config/tuning';
+import type { AiArchetype, Tuning } from '../config/tuning';
 import { showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
+import { computeControlRateMultiplier } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
-import { drawFeatherIcon, roundRect, type RenderExtra } from './shared';
+import { roundRect, type RenderExtra } from './shared';
 
 export function drawCircleSkillButton(
   ctx: CanvasRenderingContext2D,
@@ -72,6 +73,111 @@ export function drawCircleSkillButton(
   ctx.restore();
 }
 
+function drawMiniBirdAvatar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  kind: 'player' | AiArchetype,
+): void {
+  ctx.save();
+  ctx.translate(x, y);
+  const bg =
+    kind === 'player'
+      ? '#334155'
+      : kind === 'sparrow'
+        ? '#b45309'
+        : kind === 'red_crest'
+          ? '#fee2e2'
+          : '#f8fafc';
+  const border =
+    kind === 'player'
+      ? '#38bdf8'
+      : kind === 'red_crest'
+        ? '#ef4444'
+        : kind === 'sparrow'
+          ? '#fbbf24'
+          : '#cbd5e1';
+
+  ctx.fillStyle = bg;
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  if (kind === 'red_crest') {
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.moveTo(-2, -r + 2);
+    ctx.lineTo(2, -r - 4);
+    ctx.lineTo(5, -r + 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Eye & beak
+  ctx.fillStyle = kind === 'player' ? '#f8fafc' : '#0f172a';
+  ctx.beginPath();
+  ctx.arc(kind === 'player' ? 2.5 : -2.5, -1, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#f59e0b';
+  ctx.beginPath();
+  if (kind === 'player') {
+    ctx.moveTo(6, -1);
+    ctx.lineTo(11, 1);
+    ctx.lineTo(6, 3);
+  } else {
+    ctx.moveTo(-6, -1);
+    ctx.lineTo(-11, 1);
+    ctx.lineTo(-6, 3);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawControlBar(
+  ctx: CanvasRenderingContext2D,
+  opts: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    value: number;
+    max: number;
+    fill: string;
+    flashing: boolean;
+    animTimeSec: number;
+    alignRight?: boolean;
+  },
+): void {
+  const ratio = Math.max(0, Math.min(1, opts.value / Math.max(1, opts.max)));
+  const pulse = opts.flashing ? 0.5 + 0.5 * Math.sin(opts.animTimeSec * 14) : 0;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+  roundRect(ctx, opts.x, opts.y, opts.w, opts.h, opts.h / 2);
+  ctx.fill();
+
+  if (ratio > 0) {
+    const fillW = Math.max(opts.h * 0.6, opts.w * ratio);
+    const fx = opts.alignRight ? opts.x + opts.w - fillW : opts.x;
+    ctx.fillStyle = opts.flashing && pulse > 0.5 ? '#fde047' : opts.fill;
+    roundRect(ctx, fx, opts.y, fillW, opts.h, opts.h / 2);
+    ctx.fill();
+  }
+
+  if (opts.flashing) {
+    ctx.strokeStyle = `rgba(253, 224, 71, ${0.45 + pulse * 0.55})`;
+    ctx.lineWidth = 2;
+    roundRect(ctx, opts.x, opts.y, opts.w, opts.h, opts.h / 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 export function drawHudAndControls(
   ctx: CanvasRenderingContext2D,
   world: PigeonFountainWorld,
@@ -83,31 +189,84 @@ export function drawHudAndControls(
   const hud = t.ui.hud;
 
   // Top HUD bar
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.84)';
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
   roundRect(ctx, hud.bar.x, hud.bar.y, hud.bar.w, hud.bar.h, hud.bar.r);
   ctx.fill();
 
-  // Countdown
-  ctx.fillStyle = match.remainingSec <= 10 ? '#fca5a5' : '#ffffff';
-  ctx.font = '800 17px sans-serif';
-  ctx.textAlign = 'left';
+  const maxControl = t.control.maxControl;
+  const maxRivalControl = match.rivalControls.reduce((m, r) => Math.max(m, r.control), 0);
+  const playerLeads = match.playerControl >= maxRivalControl;
+
+  // Left: Player avatar + control bar (0-100)
+  drawMiniBirdAvatar(ctx, 32, 36, 13, 'player');
+  drawControlBar(ctx, {
+    x: 50,
+    y: 28,
+    w: 84,
+    h: 16,
+    value: match.playerControl,
+    max: maxControl,
+    fill: '#38bdf8',
+    flashing: playerLeads && match.playerControl >= t.control.flashThreshold,
+    animTimeSec: extra.animTimeSec,
+  });
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 10px sans-serif';
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(`${Math.ceil(match.remainingSec)}s`, 24, 36);
+  ctx.fillText(`${Math.floor(match.playerControl)}`, 92, 36);
 
-  // 3 feathers
-  for (let i = 0; i < t.scoring.maxFeathers; i++) {
-    drawFeatherIcon(ctx, 76 + i * 20, 36, i < match.feathers);
+  // Center: Countdown
+  ctx.fillStyle = match.remainingSec <= 10 ? '#fca5a5' : '#ffffff';
+  ctx.font = '900 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${Math.ceil(match.remainingSec)}s`, 164, 36);
+
+  // Right: Rivals avatars & control bars (up to 3 compact rows)
+  const visibleRivals = match.rivalControls.slice(0, 3);
+  if (visibleRivals.length === 1) {
+    const r = visibleRivals[0];
+    const rFlashes = !playerLeads && r.control >= t.control.flashThreshold && r.control >= maxRivalControl;
+    drawControlBar(ctx, {
+      x: 194,
+      y: 28,
+      w: 76,
+      h: 16,
+      value: r.control,
+      max: maxControl,
+      fill: '#fb7185',
+      flashing: rFlashes,
+      animTimeSec: extra.animTimeSec,
+      alignRight: true,
+    });
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '800 10px sans-serif';
+    ctx.fillText(`${Math.floor(r.control)}`, 232, 36);
+    drawMiniBirdAvatar(ctx, 286, 36, 13, r.archetype);
+  } else {
+    const rowH = 10;
+    const gap = 3;
+    const totalH = visibleRivals.length * rowH + (visibleRivals.length - 1) * gap;
+    const startY = 36 - totalH / 2;
+    visibleRivals.forEach((r, idx) => {
+      const ry = startY + idx * (rowH + gap);
+      const rFlashes = !playerLeads && r.control >= t.control.flashThreshold && r.control >= maxRivalControl;
+      drawControlBar(ctx, {
+        x: 194,
+        y: ry + 1,
+        w: 78,
+        h: 8,
+        value: r.control,
+        max: maxControl,
+        fill: r.archetype === 'red_crest' ? '#ef4444' : r.archetype === 'sparrow' ? '#f59e0b' : '#fb7185',
+        flashing: rFlashes,
+        animTimeSec: extra.animTimeSec,
+        alignRight: true,
+      });
+      drawMiniBirdAvatar(ctx, 286, ry + rowH / 2, 6.5, r.archetype);
+    });
   }
-
-  // Score (+ target in stage mode)
-  ctx.fillStyle = '#fde047';
-  ctx.font = '800 16px sans-serif';
-  ctx.textAlign = 'right';
-  const scoreText =
-    match.mode === 'stage'
-      ? `${Math.floor(match.score)}/${stage.targetScore}`
-      : `${Math.floor(match.score)}分`;
-  ctx.fillText(scoreText, 294, 36);
 
   // Mute button
   ctx.fillStyle = 'rgba(255,255,255,0.14)';
@@ -128,7 +287,7 @@ export function drawHudAndControls(
   ctx.fillRect(hud.pauseBtn.x - 4.5, hud.pauseBtn.y - 5.5, 3, 11);
   ctx.fillRect(hud.pauseBtn.x + 1.5, hud.pauseBtn.y - 5.5, 3, 11);
 
-  // Stage label + Combo pill row under HUD
+  // Stage label + Endless score / Combo pill row under HUD
   ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
   roundRect(ctx, 14, 65, 118, 22, 11);
   ctx.fill();
@@ -137,13 +296,23 @@ export function drawHudAndControls(
   ctx.textAlign = 'center';
   ctx.fillText(stage.shortName, 73, 76);
 
+  if (match.mode === 'endless') {
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+    roundRect(ctx, 140, 65, 84, 22, 11);
+    ctx.fill();
+    ctx.fillStyle = '#fde047';
+    ctx.font = '800 11.5px sans-serif';
+    ctx.fillText(`${Math.floor(match.score)}分`, 182, 76);
+  }
+
   if (combo > 1) {
+    const mult = computeControlRateMultiplier(combo, t);
     ctx.fillStyle = combo === 3 ? '#f97316' : '#38bdf8';
     roundRect(ctx, width - 86, 65, 72, 22, 11);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.font = '800 12px sans-serif';
-    ctx.fillText(`舒爽 ×${combo}`, width - 50, 76);
+    ctx.fillText(`舒爽 ×${mult}`, width - 50, 76);
   }
 
   if (extra.screenMode !== 'playing' && extra.screenMode !== 'paused') return;

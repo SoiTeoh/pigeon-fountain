@@ -244,38 +244,46 @@ describe('stepMatchState', () => {
     expect(r2.state.nozzles[1].phase).toBe('IDLE');
   });
 
-  it('blasts grounded player and removes 1 feather on SURGE, but airborne jump dodges it', () => {
+  it('blasts grounded player and subtracts 10 control on SURGE, but airborne jump dodges it', () => {
     const base = createInitialMatchState('stage', 1, tuning);
     const nozzles = base.nozzles.map((n, i) =>
       i === 1 ? { ...n, phase: 'SURGE_WARN' as const, phaseTimerSec: 0.05 } : n,
     );
     const hitRes = stepMatchState(
-      { ...base, playerHoldSec: 2.0, nozzles },
+      { ...base, playerControl: 42, playerHoldSec: 2.0, nozzles },
       { dtSec: 0.06, playerX: 195, playerAirborne: false, rivals: [{ id: 0, x: 100, airborne: false }] },
       tuning,
       () => 0.5,
     );
     expect(hitRes.playerHitBySurgeSlot).toBe(1);
-    expect(hitRes.state.feathers).toBe(tuning.scoring.maxFeathers - 1);
+    expect(hitRes.state.playerControl).toBe(42 - tuning.control.surgePenalty);
+    expect(hitRes.state.playerSurgeHits).toBe(1);
 
     const dodgeRes = stepMatchState(
-      { ...base, playerHoldSec: 2.0, nozzles },
+      { ...base, playerControl: 42, playerHoldSec: 2.0, nozzles },
       { dtSec: 0.06, playerX: 195, playerAirborne: true, rivals: [{ id: 0, x: 100, airborne: false }] },
       tuning,
       () => 0.5,
     );
     expect(dodgeRes.playerHitBySurgeSlot).toBeNull();
-    expect(dodgeRes.state.feathers).toBe(tuning.scoring.maxFeathers);
+    expect(dodgeRes.state.playerControl).toBe(42);
   });
 
-  it('awards sabotage bonus (+150) for each rival blasted by SURGE', () => {
+  it('awards sabotage bonus (+150) and deducts 10 control for each rival blasted by SURGE', () => {
     const base = createInitialMatchState('stage', 2, tuning);
     const nozzles = base.nozzles.map((n, i) =>
       i === 1 ? { ...n, phase: 'SURGE_WARN' as const, phaseTimerSec: 0.05 } : n,
     );
     const nx = nozzles[1].x;
     const res = stepMatchState(
-      { ...base, nozzles },
+      {
+        ...base,
+        rivalControls: [
+          { id: 0, archetype: 'white_pigeon', control: 30 },
+          { id: 1, archetype: 'sparrow', control: 5 },
+        ],
+        nozzles,
+      },
       {
         dtSec: 0.06,
         playerX: 60,
@@ -291,27 +299,82 @@ describe('stepMatchState', () => {
     expect(res.rivalsHitBySurge.length).toBe(2);
     expect(res.state.sabotageCount).toBe(2);
     expect(res.state.score).toBe(tuning.scoring.sabotageBonus * 2);
+    expect(res.state.rivalControls[0].control).toBe(20);
+    expect(res.state.rivalControls[1].control).toBe(0);
   });
 
-  it('ends match with feathers_zero when last feather is lost', () => {
+  it('ends match immediately when player or rival reaches 100 control', () => {
     const base = createInitialMatchState('stage', 1, tuning);
     const nozzles = base.nozzles.map((n, i) =>
-      i === 1 ? { ...n, phase: 'SURGE_WARN' as const, phaseTimerSec: 0.05 } : n,
+      i === 1 ? { ...n, phase: 'ACTIVE' as const, phaseTimerSec: 2.0 } : n,
     );
-    const res = stepMatchState(
-      { ...base, feathers: 1, nozzles },
-      { dtSec: 0.06, playerX: 195, playerAirborne: false, rivals: [{ id: 0, x: 100, airborne: false }] },
+    const winRes = stepMatchState(
+      { ...base, playerControl: 99.8, nozzles },
+      { dtSec: 0.1, playerX: 195, playerAirborne: false, rivals: [{ id: 0, x: 100, airborne: false }] },
       tuning,
       () => 0.5,
     );
-    expect(res.state.feathers).toBe(0);
-    expect(res.state.finished).toBe(true);
-    expect(res.state.endReason).toBe('feathers_zero');
+    expect(winRes.state.playerControl).toBe(100);
+    expect(winRes.state.finished).toBe(true);
+    expect(winRes.state.endReason).toBe('player_full');
+
+    const loseRes = stepMatchState(
+      {
+        ...base,
+        rivalControls: [{ id: 0, archetype: 'white_pigeon', control: 99.9 }],
+        nozzles,
+      },
+      { dtSec: 0.1, playerX: 60, playerAirborne: false, rivals: [{ id: 0, x: 195, airborne: false }] },
+      tuning,
+      () => 0.5,
+    );
+    expect(loseRes.state.rivalControls[0].control).toBe(100);
+    expect(loseRes.state.finished).toBe(true);
+    expect(loseRes.state.endReason).toBe('rival_full');
   });
 
-  it('ends match with time_up at 50s in stage mode and freezes afterward', () => {
+  it('gains control at 4/s * 1/1.5/2 combo, rivalGainMult 0.7 on Stage 1, and pauses gain while stunned', () => {
     const base = createInitialMatchState('stage', 1, tuning);
-    expect(base.remainingSec).toBe(50);
+    const nozzles = base.nozzles.map((n, i) =>
+      i === 1 ? { ...n, phase: 'ACTIVE' as const, phaseTimerSec: 5.0 } : n,
+    );
+
+    const p1 = stepMatchState(
+      { ...base, playerHoldSec: 0, nozzles },
+      { dtSec: 1.0, playerX: 195, playerAirborne: false, rivals: [{ id: 0, x: 60, airborne: false }] },
+      tuning,
+      () => 0.5,
+    );
+    expect(p1.state.playerControl).toBeCloseTo(4, 4);
+
+    const p3 = stepMatchState(
+      { ...base, playerHoldSec: 3.0, nozzles },
+      { dtSec: 1.0, playerX: 195, playerAirborne: false, rivals: [{ id: 0, x: 60, airborne: false }] },
+      tuning,
+      () => 0.5,
+    );
+    expect(p3.state.playerControl).toBeCloseTo(8, 4); // 4/s * 2x
+
+    const rivalActive = stepMatchState(
+      { ...base, nozzles },
+      { dtSec: 1.0, playerX: 60, playerAirborne: false, rivals: [{ id: 0, x: 195, airborne: false, stunned: false }] },
+      tuning,
+      () => 0.5,
+    );
+    expect(rivalActive.state.rivalControls[0].control).toBeCloseTo(4 * 0.7, 4);
+
+    const rivalStunned = stepMatchState(
+      { ...base, nozzles },
+      { dtSec: 1.0, playerX: 60, playerAirborne: false, rivals: [{ id: 0, x: 195, airborne: false, stunned: true }] },
+      tuning,
+      () => 0.5,
+    );
+    expect(rivalStunned.state.rivalControls[0].control).toBe(0);
+  });
+
+  it('ends match with time_up at 60s in stage mode and freezes afterward', () => {
+    const base = createInitialMatchState('stage', 1, tuning);
+    expect(base.remainingSec).toBe(60);
     const res = stepMatchState(
       { ...base, remainingSec: 0.05 },
       { dtSec: 0.1, playerX: 100, playerAirborne: false, rivals: [{ id: 0, x: 250, airborne: false }] },
@@ -662,12 +725,55 @@ describe('PigeonFountainWorld integration mechanics', () => {
 });
 
 describe('Stage progression, stars, and storage adapter', () => {
-  it('evaluates 0..3 stars accurately and enforces feathers_zero failure', () => {
-    expect(evaluateStageStars(349, 'time_up', STAGES[1])).toBe(0);
-    expect(evaluateStageStars(350, 'time_up', STAGES[1])).toBe(1);
-    expect(evaluateStageStars(550, 'time_up', STAGES[1])).toBe(2);
-    expect(evaluateStageStars(800, 'time_up', STAGES[1])).toBe(3);
-    expect(evaluateStageStars(999, 'feathers_zero', STAGES[1])).toBe(0);
+  it('evaluates 0..3 stars accurately from control race outcome', () => {
+    const base = createInitialMatchState('stage', 1, tuning);
+    expect(
+      evaluateStageStars(
+        {
+          ...base,
+          endReason: 'rival_full',
+          playerControl: 80,
+          rivalControls: [{ id: 0, archetype: 'white_pigeon', control: 100 }],
+        },
+        STAGES[1],
+      ),
+    ).toBe(0);
+    expect(
+      evaluateStageStars(
+        {
+          ...base,
+          endReason: 'time_up',
+          playerControl: 60,
+          playerSurgeHits: 1,
+          rivalControls: [{ id: 0, archetype: 'white_pigeon', control: 55 }],
+        },
+        STAGES[1],
+      ),
+    ).toBe(1);
+    expect(
+      evaluateStageStars(
+        {
+          ...base,
+          endReason: 'player_full',
+          playerControl: 100,
+          playerSurgeHits: 1,
+          rivalControls: [{ id: 0, archetype: 'white_pigeon', control: 70 }],
+        },
+        STAGES[1],
+      ),
+    ).toBe(2);
+    expect(
+      evaluateStageStars(
+        {
+          ...base,
+          endReason: 'player_full',
+          playerControl: 100,
+          playerSurgeHits: 0,
+          rivalControls: [{ id: 0, archetype: 'white_pigeon', control: 60 }],
+        },
+        STAGES[1],
+      ),
+    ).toBe(3);
   });
 
   it('unlocks subsequent stages and persists stars/high scores via storage interface', () => {

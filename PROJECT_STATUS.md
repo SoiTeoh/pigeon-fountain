@@ -13,7 +13,8 @@ Idea Lab v2 — Project 02：基于 **Vite + TypeScript (strict) + 原生 HTML5 
   - [x] M0-4：将 `painter.ts` 拆分为 `render/shared.ts`、`render/camera.ts`、`render/plaza.ts`、`render/actors/birds.ts`、`render/fx/particles.ts`、`render/hud.ts` 与 `scenes/overlays.ts`、`scenes/manager.ts`（单文件均 `< 400` 行），画面与行为保持完全一致。
   - [x] M0-5：新建 `src/content/strings.zh.ts` 集中界面文案，首页副标题改为“一屁股坐住，谁也别想抢”，手机/触屏端隐藏所有键盘提示（仅在检测到键盘输入时显示）。
   - [x] M0-6：修复 `main.ts` 每次开局生成独立随机 `uint32` 种子传入 `PigeonFountainWorld` 并记录至回放头，新增未指定种子差异性与同种子一致性测试。
-- **M0 打地基全部完成**，进入 M1 前半段开发。
+- **M0 打地基全部完成**，进入 M1 前半段开发：
+  - [x] M1-1：胜负规则改为 0–100 霸占条赛跑（基础 4/s、连击 ×1/×1.5/×2、暴喷 -10、对手独立倍率 `rivalGainMult`、60s 上限），去掉羽毛与 `0/350` 分数显示；HUD 左上显示玩家头像与霸占条、右上显示对手头像与霸占条，领先方 >80 闪烁。
 - **V2.0 Phase 1（`v2.0-arcade`）实机录屏体验与全量自动化验收均已完成**。
 - 已完成 4 关闯关霸占 + 60s 无尽广场大乱斗全部实测，并修复实机录屏发现的第 4 关结算页重复「再来一局 (R)」按钮与封面 4 位数高分与星星行距过近问题。
 - 已打标 `v2.0-arcade` 并准备接入个人博客 `IDEA LAB / 003` 上线部署。
