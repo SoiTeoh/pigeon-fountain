@@ -17,6 +17,10 @@ export interface FountainSlotState {
   readonly lateralStrength: number;
   readonly lateralTimerSec: number;
   readonly willSurge: boolean;
+  readonly plugRewardOwner?: 'player' | number | null;
+  readonly plugRewardTimerSec?: number;
+  readonly contestDurationSec?: number;
+  readonly angryWarnTimerSec?: number;
 }
 
 export interface PropState {
@@ -87,4 +91,7 @@ export interface MatchStepResult {
   readonly enteredPhases: readonly FountainPhase[];
   readonly playerHitBySurgeSlot: number | null;
   readonly rivalsHitBySurge: readonly { rivalId: number; slotIndex: number }[];
+  readonly angryWarnSlots: readonly number[];
+  readonly angryPlayerLaunchSlot: number | null;
+  readonly angryRivalLaunches: readonly { rivalId: number; slotIndex: number }[];
 }

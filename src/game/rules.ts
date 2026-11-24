@@ -205,6 +205,9 @@ export function stepMatchState(
       enteredPhases: [],
       playerHitBySurgeSlot: null,
       rivalsHitBySurge: [],
+      angryWarnSlots: [],
+      angryPlayerLaunchSlot: null,
+      angryRivalLaunches: [],
     };
   }
 
@@ -443,17 +446,71 @@ export function stepMatchState(
     }
   }
 
-  // Evaluate multi-nozzle occupancy during ACTIVE (contested -> nobody gains!)
+  // Evaluate multi-nozzle occupancy during ACTIVE + plug reward boost + angry fountain contention!
   const rivalXs = input.rivals.map((r) => r.x);
   const rivalAirbornes = input.rivals.map((r) => r.airborne || Boolean(r.stunned));
   let occupant: Occupant = 'none';
   let occupiedSlotIndex: number | null = null;
   const contestedSlots: number[] = [];
+  const angryWarnSlots: number[] = [];
+  let angryPlayerLaunchSlot: number | null = null;
+  const angryRivalLaunches: { rivalId: number; slotIndex: number }[] = [];
   let bestPlayerDist = Number.POSITIVE_INFINITY;
-  const gainingRivalIds = new Set<number>();
+  let playerPlugBoost = 1;
+  const gainingRivals: { id: number; boost: number }[] = [];
 
-  for (const nozzle of nozzles) {
+  for (let i = 0; i < nozzles.length; i++) {
+    let nozzle = nozzles[i];
+    if ((nozzle.plugRewardTimerSec ?? 0) > 0) {
+      const remReward = Math.max(0, (nozzle.plugRewardTimerSec ?? 0) - dtSec);
+      nozzle = {
+        ...nozzle,
+        plugRewardTimerSec: remReward,
+        plugRewardOwner: remReward > 0 ? nozzle.plugRewardOwner : null,
+      };
+      nozzles[i] = nozzle;
+    }
+
     if (nozzle.phase !== 'ACTIVE') continue;
+
+    // Angry fountain countdown -> surge blast (no control penalty, just launches everyone!)
+    if ((nozzle.angryWarnTimerSec ?? 0) > 0) {
+      const remWarn = (nozzle.angryWarnTimerSec ?? 0) - dtSec;
+      if (remWarn <= 0) {
+        nozzles[i] = {
+          ...nozzle,
+          phase: 'SURGE',
+          phaseTimerSec: t.fountain.surgeDurationSec,
+          lateralDir: 0,
+          lateralStrength: 0,
+          contestDurationSec: 0,
+          angryWarnTimerSec: 0,
+          plugRewardOwner: null,
+          plugRewardTimerSec: 0,
+        };
+        enteredPhases.push('SURGE');
+        if (
+          !input.playerAirborne &&
+          angryPlayerLaunchSlot === null &&
+          Math.abs(input.playerX - nozzle.x) <= t.fountain.coreRadiusPx + 6
+        ) {
+          angryPlayerLaunchSlot = nozzle.slotIndex;
+          playerHoldSec = 0;
+        }
+        for (const rival of input.rivals) {
+          if (
+            !rival.airborne &&
+            Math.abs(rival.x - nozzle.x) <= t.fountain.coreRadiusPx + 6 &&
+            !angryRivalLaunches.some((r) => r.rivalId === rival.id)
+          ) {
+            angryRivalLaunches.push({ rivalId: rival.id, slotIndex: nozzle.slotIndex });
+          }
+        }
+        continue;
+      }
+      nozzles[i] = { ...nozzle, angryWarnTimerSec: remWarn };
+    }
+
     const occ = evaluateNozzleOccupant(
       input.playerX,
       rivalXs,
@@ -465,22 +522,49 @@ export function stepMatchState(
     if (occ === 'contested') {
       contestedSlots.push(nozzle.slotIndex);
       if (occupant === 'none') occupant = 'contested';
-    } else if (occ === 'player') {
-      const dist = Math.abs(input.playerX - nozzle.x);
-      if (dist < bestPlayerDist) {
-        bestPlayerDist = dist;
-        occupant = 'player';
-        occupiedSlotIndex = nozzle.slotIndex;
+      if ((nozzles[i].angryWarnTimerSec ?? 0) <= 0) {
+        const nextContest = (nozzles[i].contestDurationSec ?? 0) + dtSec;
+        if (nextContest >= t.control.angryContentionSec) {
+          nozzles[i] = {
+            ...nozzles[i],
+            contestDurationSec: 0,
+            angryWarnTimerSec: t.control.angryWarnDurationSec,
+          };
+          angryWarnSlots.push(nozzle.slotIndex);
+        } else {
+          nozzles[i] = { ...nozzles[i], contestDurationSec: nextContest };
+        }
       }
-    } else if (occ === 'ai') {
-      if (occupant === 'none' || occupant === 'contested') occupant = 'ai';
-      for (const rival of input.rivals) {
-        if (
-          !rival.airborne &&
-          !rival.stunned &&
-          Math.abs(rival.x - nozzle.x) <= t.fountain.coreRadiusPx
-        ) {
-          gainingRivalIds.add(rival.id);
+    } else {
+      if ((nozzles[i].contestDurationSec ?? 0) > 0) {
+        nozzles[i] = { ...nozzles[i], contestDurationSec: 0 };
+      }
+      if (occ === 'player') {
+        const dist = Math.abs(input.playerX - nozzle.x);
+        if (dist < bestPlayerDist) {
+          bestPlayerDist = dist;
+          occupant = 'player';
+          occupiedSlotIndex = nozzle.slotIndex;
+          if (nozzle.plugRewardOwner === 'player' && (nozzle.plugRewardTimerSec ?? 0) > 0) {
+            playerPlugBoost = t.plug.rewardBoostMultiplier;
+          }
+        }
+      } else if (occ === 'ai') {
+        if (occupant === 'none' || occupant === 'contested') occupant = 'ai';
+        for (const rival of input.rivals) {
+          if (
+            !rival.airborne &&
+            !rival.stunned &&
+            Math.abs(rival.x - nozzle.x) <= t.fountain.coreRadiusPx
+          ) {
+            const boost =
+              nozzle.plugRewardOwner === rival.id && (nozzle.plugRewardTimerSec ?? 0) > 0
+                ? t.plug.rewardBoostMultiplier
+                : 1;
+            if (!gainingRivals.some((g) => g.id === rival.id)) {
+              gainingRivals.push({ id: rival.id, boost });
+            }
+          }
         }
       }
     }
@@ -493,7 +577,7 @@ export function stepMatchState(
     if (combo > maxCombo) maxCombo = combo;
     const rateMult = computeControlRateMultiplier(combo, t);
     playerControl = clamp(
-      playerControl + t.control.baseGainPerSec * rateMult * dtSec,
+      playerControl + t.control.baseGainPerSec * rateMult * playerPlugBoost * dtSec,
       0,
       t.control.maxControl,
     );
@@ -505,11 +589,11 @@ export function stepMatchState(
     }
   }
 
-  for (const rivalId of gainingRivalIds) {
-    const rc = rivalControls.find((entry) => entry.id === rivalId);
+  for (const g of gainingRivals) {
+    const rc = rivalControls.find((entry) => entry.id === g.id);
     if (rc) {
       rc.control = clamp(
-        rc.control + t.control.baseGainPerSec * stage.rivalGainMult * dtSec,
+        rc.control + t.control.baseGainPerSec * stage.rivalGainMult * g.boost * dtSec,
         0,
         t.control.maxControl,
       );
@@ -561,6 +645,9 @@ export function stepMatchState(
     enteredPhases,
     playerHitBySurgeSlot,
     rivalsHitBySurge,
+    angryWarnSlots,
+    angryPlayerLaunchSlot,
+    angryRivalLaunches,
   };
 }
 

@@ -43,7 +43,7 @@ describe('game/plug fountain plugging', () => {
     expect(earlyRelease.triggeredSurgeSlots).toEqual([]);
     expect(earlyRelease.nextPlug.cooldownSec).toBe(tuning.plug.cooldownSec);
 
-    // Hold > 0.6s then release -> adjacent nozzles 0 and 2 immediately SURGE
+    // Hold > 0.6s then release -> adjacent nozzles 0 and 2 immediately SURGE, plugged nozzle becomes ACTIVE reward water
     const longHold = stepPlugState(started.plug, started.nozzles, started.nozzles[1].x, false, 0.8, tuning);
     const longRelease = stepPlugState(longHold.nextPlug, longHold.nextNozzles, started.nozzles[1].x + 30, false, 0.05, tuning);
     expect(longRelease.released).toBe(true);
@@ -51,10 +51,13 @@ describe('game/plug fountain plugging', () => {
     expect(longRelease.triggeredSurgeSlots).toEqual([0, 2]);
     expect(longRelease.nextNozzles[0].phase).toBe('SURGE');
     expect(longRelease.nextNozzles[2].phase).toBe('SURGE');
-    expect(longRelease.nextNozzles[1].phase).toBe('IDLE');
+    expect(longRelease.nextNozzles[1].phase).toBe('ACTIVE');
+    expect(longRelease.nextNozzles[1].phaseTimerSec).toBe(tuning.plug.rewardActiveDurationSec);
+    expect(longRelease.nextNozzles[1].plugRewardOwner).toBe('player');
+    expect(longRelease.nextNozzles[1].plugRewardTimerSec).toBe(tuning.plug.rewardBoostDurationSec);
   });
 
-  it('triggers big ult at 2.0s: both sides SURGE, launches player high, and grants +8 control', () => {
+  it('triggers big ult at 2.0s: both sides SURGE, launches player high, grants +12 control, and activates reward water', () => {
     const world = new PigeonFountainWorld('stage', 1, tuning, 12345);
     const centerNozzle = world.match.nozzles[1];
     world.player.x = centerNozzle.x;

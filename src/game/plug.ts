@@ -195,9 +195,17 @@ export function stepPlugState(
     }
     nextNozzles[slotIndex] = {
       ...nextNozzles[slotIndex],
-      phase: 'IDLE',
-      phaseTimerSec: 0,
+      phase: 'ACTIVE',
+      phaseTimerSec: t.plug.rewardActiveDurationSec,
+      style: 'bubble',
+      tiltDeg: 0,
+      lateralDir: 0,
+      lateralStrength: 0,
       willSurge: false,
+      plugRewardOwner: 'player',
+      plugRewardTimerSec: t.plug.rewardBoostDurationSec,
+      contestDurationSec: 0,
+      angryWarnTimerSec: 0,
     };
     return {
       nextPlug: {
@@ -230,9 +238,17 @@ export function stepPlugState(
     }
     nextNozzles[slotIndex] = {
       ...nextNozzles[slotIndex],
-      phase: 'IDLE',
-      phaseTimerSec: 0,
+      phase: 'ACTIVE',
+      phaseTimerSec: t.plug.rewardActiveDurationSec,
+      style: 'bubble',
+      tiltDeg: 0,
+      lateralDir: 0,
+      lateralStrength: 0,
       willSurge: false,
+      plugRewardOwner: 'player',
+      plugRewardTimerSec: t.plug.rewardBoostDurationSec,
+      contestDurationSec: 0,
+      angryWarnTimerSec: 0,
     };
     return {
       nextPlug: {

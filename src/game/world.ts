@@ -1,7 +1,7 @@
 import { tuning, type StageConfig, type Tuning } from '../config/tuning';
 import { generateRandomSeed, hashState, mulberry32, normalizeSeed } from '../core/rng';
 import type { GameMode, StageId } from '../platform/storage';
-import { formatPluggedByRival, formatPluggedRival } from '../content/strings.zh';
+import { formatPluggedByRival, formatPluggedRival, STRINGS_ZH } from '../content/strings.zh';
 import { createInitialPlugState, findPluggableNozzle, startPlugOnNozzle, stepPlugState, type PlugState } from './plug';
 import { clamp, createInitialMatchState, createInitialProps, evaluateButtSlam, getStageForMatch, stepMatchState, type MatchState, type Occupant, type PropState } from './rules';
 import { pushFloatingText, spawnParticleBurst, stepBirdSquashAndExpression, stepWorldVisualFx } from './worldFx';
@@ -384,7 +384,18 @@ export class PigeonFountainWorld {
               );
               const nextNozzles = this.match.nozzles.map((n) =>
                 n.slotIndex === slot.slotIndex
-                  ? { ...n, phase: 'IDLE' as const, phaseTimerSec: 0 }
+                  ? {
+                      ...n,
+                      phase: 'ACTIVE' as const,
+                      phaseTimerSec: this.t.plug.rewardActiveDurationSec,
+                      style: 'bubble' as const,
+                      tiltDeg: 0,
+                      lateralDir: 0 as const,
+                      lateralStrength: 0,
+                      willSurge: false,
+                      plugRewardOwner: r.id,
+                      plugRewardTimerSec: this.t.plug.rewardBoostDurationSec,
+                    }
                   : adjIndices.includes(n.slotIndex)
                     ? { ...n, phase: 'SURGE' as const, phaseTimerSec: this.t.fountain.surgeDurationSec, lateralDir: 0 as const, lateralStrength: 0 }
                     : n,
@@ -592,7 +603,34 @@ export class PigeonFountainWorld {
       pushFloatingText(this.floats, this.t, this.player.x, this.t.scene.groundY - 76, `哎呀！-${this.t.control.surgePenalty}`, '#ef4444', 1.1);
     }
 
-    const aiHitBySurge = aiHitByPlugSurge || ruleRes.rivalsHitBySurge.length > 0;
+    for (const warnSlotIdx of ruleRes.angryWarnSlots) {
+      const slot = this.match.nozzles[warnSlotIdx];
+      if (slot) {
+        pushFloatingText(this.floats, this.t, slot.x, this.t.scene.groundY - 96, STRINGS_ZH.hud.fountainAngry, '#f97316', 1.2);
+      }
+    }
+
+    if (ruleRes.angryPlayerLaunchSlot !== null) {
+      const nozzle = this.match.nozzles[ruleRes.angryPlayerLaunchSlot];
+      this.player.airborne = true;
+      this.player.isJumping = false;
+      this.player.vy = -540;
+      this.player.vx = (this.player.x < (nozzle?.x ?? 195) ? -1 : 1) * 115;
+      this.shakeMag = Math.max(this.shakeMag, 8.5);
+    }
+
+    for (const hit of ruleRes.angryRivalLaunches) {
+      const rival = this.rivals.find((r) => r.id === hit.rivalId);
+      const nozzle = this.match.nozzles[hit.slotIndex];
+      if (rival && nozzle) {
+        this.shakeMag = Math.max(
+          this.shakeMag,
+          launchRivalFromFountain(rival, nozzle.x, nozzle.tiltDeg, false, this.props, this.particles, this.floats, this.fxRng, this.t),
+        );
+      }
+    }
+
+    const aiHitBySurge = aiHitByPlugSurge || ruleRes.rivalsHitBySurge.length > 0 || ruleRes.angryRivalLaunches.length > 0;
     for (const hit of ruleRes.rivalsHitBySurge) {
       const rival = this.rivals.find((r) => r.id === hit.rivalId);
       const nozzle = this.match.nozzles[hit.slotIndex];

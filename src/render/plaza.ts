@@ -436,31 +436,48 @@ export function drawSingleFountainJet(
   }
 
   if (n.phase === 'ACTIVE') {
+    const isAngryWarn = (n.angryWarnTimerSec ?? 0) > 0;
+    const isPlugReward = (n.plugRewardTimerSec ?? 0) > 0;
+    const angryJitterX = isAngryWarn ? Math.sin(animTimeSec * 70) * 5 : 0;
     const jetLen = 128;
     const tiltRad = (n.tiltDeg * Math.PI) / 180;
     const baseLean =
       n.style === 'angled'
         ? Math.sin(tiltRad) * jetLen
         : n.lateralDir * (n.lateralStrength / t.fountain.lateralPushMax) * 14;
-    const topX = nx + baseLean;
+    const topX = nx + baseLean + angryJitterX;
     const topY = groundY - Math.cos(tiltRad) * jetLen;
 
-    const grad = ctx.createLinearGradient(nx, groundY, topX, topY);
+    const grad = ctx.createLinearGradient(nx + angryJitterX, groundY, topX, topY);
     grad.addColorStop(
       0,
-      n.style === 'angled' ? 'rgba(14, 165, 233, 0.92)' : 'rgba(56, 189, 248, 0.85)',
+      isAngryWarn
+        ? 'rgba(249, 115, 22, 0.92)'
+        : n.style === 'angled'
+          ? 'rgba(14, 165, 233, 0.92)'
+          : 'rgba(56, 189, 248, 0.85)',
     );
-    grad.addColorStop(0.6, 'rgba(186, 230, 253, 0.8)');
+    grad.addColorStop(0.6, isAngryWarn ? 'rgba(253, 186, 116, 0.85)' : 'rgba(186, 230, 253, 0.8)');
     grad.addColorStop(1, 'rgba(255, 255, 255, 0.2)');
     ctx.fillStyle = grad;
 
     ctx.beginPath();
-    ctx.moveTo(nx - 13, groundY - 2);
-    ctx.quadraticCurveTo(nx - 10 + baseLean * 0.48, (groundY + topY) / 2, topX - 20, topY);
+    ctx.moveTo(nx - 13 + angryJitterX, groundY - 2);
+    ctx.quadraticCurveTo(nx - 10 + angryJitterX + baseLean * 0.48, (groundY + topY) / 2, topX - 20, topY);
     ctx.lineTo(topX + 20, topY);
-    ctx.quadraticCurveTo(nx + 10 + baseLean * 0.48, (groundY + topY) / 2, nx + 13, groundY - 2);
+    ctx.quadraticCurveTo(nx + 10 + angryJitterX + baseLean * 0.48, (groundY + topY) / 2, nx + 13 + angryJitterX, groundY - 2);
     ctx.closePath();
     ctx.fill();
+
+    if (isPlugReward) {
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+    } else if (isAngryWarn) {
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
 
     // Inner foam stream
     ctx.fillStyle = 'rgba(255,255,255,0.68)';

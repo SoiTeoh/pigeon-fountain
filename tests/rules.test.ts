@@ -940,6 +940,81 @@ describe('Stage progression, stars, and storage adapter', () => {
     expect(world.player.x).toBeGreaterThan(215);
   });
 
+  it('grants 2x control gain on plugger reward water and triggers angry fountain surge after 2.0s contention + 0.4s warning without control penalty', () => {
+    const base = createInitialMatchState('stage', 1, tuning);
+    const rewardNozzles = base.nozzles.map((n, i) =>
+      i === 1
+        ? {
+            ...n,
+            phase: 'ACTIVE' as const,
+            phaseTimerSec: tuning.plug.rewardActiveDurationSec,
+            plugRewardOwner: 'player' as const,
+            plugRewardTimerSec: tuning.plug.rewardBoostDurationSec,
+          }
+        : n,
+    );
+    const rewardStep = stepMatchState(
+      { ...base, nozzles: rewardNozzles },
+      {
+        dtSec: 1.0,
+        playerX: rewardNozzles[1].x,
+        playerAirborne: false,
+        rivals: [{ id: 0, x: 40, airborne: false }],
+      },
+      tuning,
+      () => 0.5,
+    );
+    expect(rewardStep.state.playerControl).toBeCloseTo(
+      tuning.control.baseGainPerSec * tuning.plug.rewardBoostMultiplier,
+      4,
+    );
+
+    // Contention for 2.0s -> enters 0.4s angryWarnTimerSec -> SURGE launching everyone with no -10 penalty
+    const world = new PigeonFountainWorld('stage', 1, tuning, 999);
+    const slotX = world.match.nozzles[1].x;
+    world.match = {
+      ...world.match,
+      playerControl: 30,
+      nozzles: world.match.nozzles.map((n, i) =>
+        i === 1
+          ? { ...n, phase: 'ACTIVE', phaseTimerSec: 8.0, contestDurationSec: 0, angryWarnTimerSec: 0 }
+          : { ...n, phase: 'IDLE', phaseTimerSec: 99 },
+      ),
+    };
+    world.player.x = slotX;
+    world.player.y = tuning.scene.groundY;
+    world.player.airborne = false;
+    world.rivals[0].x = slotX + 5;
+    world.rivals[0].y = tuning.scene.groundY;
+    world.rivals[0].airborne = false;
+
+    // Step 2.05s of contention to trigger angry warning
+    let warnSeen = false;
+    let launchSeen = false;
+    for (let i = 0; i < 160; i++) {
+      world.player.x = slotX;
+      world.player.y = tuning.scene.groundY;
+      world.player.airborne = false;
+      world.rivals[0].x = slotX + 5;
+      world.rivals[0].y = tuning.scene.groundY;
+      world.rivals[0].airborne = false;
+      world.rivals[0].bumpCooldownSec = 99;
+      const ev = world.step({ moveDir: 0, bumpPressed: false, jumpPressed: false }, tuning.loop.fixedDtMs);
+      const nozzle1 = world.match.nozzles[1];
+      if (nozzle1 && (nozzle1.angryWarnTimerSec ?? 0) > 0) {
+        warnSeen = true;
+      }
+      if (nozzle1 && nozzle1.phase === 'SURGE' && world.player.airborne) {
+        launchSeen = true;
+        break;
+      }
+      void ev;
+    }
+    expect(warnSeen).toBe(true);
+    expect(launchSeen).toBe(true);
+    expect(world.match.playerControl).toBe(30);
+  });
+
   it('sets 60s duration for Endless mode and verifies 4 distinct stage configs', () => {
     const endless = createInitialMatchState('endless', 1, tuning);
     expect(endless.remainingSec).toBe(60);
