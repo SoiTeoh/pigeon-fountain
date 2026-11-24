@@ -146,8 +146,16 @@ export class PigeonFountainWorld {
 
     if (moveDir !== 0 && moveScale > 0) {
       this.player.facing = moveDir;
-      const airControl = this.player.airborne ? 0.72 : 1;
-      this.player.vx += moveDir * this.t.pigeon.playerMoveAccel * moveScale * airControl * dtSec;
+      // Clear opposing momentum immediately on direction reversal so turning is instantaneous
+      if (this.player.vx * moveDir < 0) {
+        this.player.vx = 0;
+      }
+      if (input.directControl && !this.player.airborne && this.player.bumpAnimSec <= 0) {
+        this.player.vx = moveDir * this.t.pigeon.playerMaxSpeed * moveScale;
+      } else {
+        const airControl = this.player.airborne ? 0.85 : 1;
+        this.player.vx += moveDir * this.t.pigeon.playerMoveAccel * 4 * moveScale * airControl * dtSec;
+      }
       if (!this.player.airborne) {
         this.player.waddlePhase += dtSec * (10 + 6 * moveScale);
       }

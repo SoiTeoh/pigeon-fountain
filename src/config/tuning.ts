@@ -72,8 +72,8 @@ export const tuning = {
       buttonHitPadPx: 14,
       dragZoneMinY: 320,
       dragZoneMaxXRatio: 0.6,
-      joystickDeadzonePx: 10,
-      joystickMaxRadiusPx: 45,
+      joystickDeadzonePx: 5,
+      joystickMaxRadiusPx: 26,
     },
     title: {
       card: { x: 22, y: 54, w: 346, h: 528, r: 22 },

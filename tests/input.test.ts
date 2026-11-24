@@ -37,6 +37,7 @@ describe('core/input', () => {
       moveDir: 1,
       moveScale: 1,
       stopOnRelease: false,
+      directControl: true,
       bumpPressed: true,
       jumpPressed: false,
       slamPressed: false,
@@ -50,36 +51,43 @@ describe('core/input', () => {
     expect(input.peekMoveAxis()).toBe(0);
   });
 
-  it('implements relative horizontal joystick deadzone (±10px), proportional acceleration (to ±45px), and stop on release', () => {
+  it('implements ±5px deadzone, ±26px quadratic acceleration, origin follow, and 1-frame reversal', () => {
     expect(computeJoystickResponse(0)).toEqual({ axis: 0, scale: 0 });
-    expect(computeJoystickResponse(10)).toEqual({ axis: 0, scale: 0 });
-    expect(computeJoystickResponse(-10)).toEqual({ axis: 0, scale: 0 });
+    expect(computeJoystickResponse(5)).toEqual({ axis: 0, scale: 0 });
+    expect(computeJoystickResponse(-5)).toEqual({ axis: 0, scale: 0 });
 
-    const mid = computeJoystickResponse(27.5);
+    // Halfway between 5 and 26 is 15.5 -> quadratic scale = 0.5^2 = 0.25
+    const mid = computeJoystickResponse(15.5);
     expect(mid.axis).toBe(1);
-    expect(mid.scale).toBeCloseTo(0.5, 4);
+    expect(mid.scale).toBeCloseTo(0.25, 4);
 
-    expect(computeJoystickResponse(45)).toEqual({ axis: 1, scale: 1 });
-    expect(computeJoystickResponse(-80)).toEqual({ axis: -1, scale: 1 });
+    expect(computeJoystickResponse(26)).toEqual({ axis: 1, scale: 1 });
+    expect(computeJoystickResponse(-60)).toEqual({ axis: -1, scale: 1 });
 
+    // Origin follow: drag to x=160 from origin=100 -> origin follows to 160-26=134
     const input = new InputController('touch');
     expect(input.startJoystick(1, 100, 520, 'touch')).toBe(true);
-    input.updateJoystick(1, 108, 520); // within ±10px deadzone
-    expect(input.peekMove()).toEqual({ axis: 0, scale: 0 });
+    input.updateJoystick(1, 160, 520);
+    expect(input.getJoystickVisual().originX).toBe(134);
+    expect(input.peekMove()).toEqual({ axis: 1, scale: 1 });
 
-    input.updateJoystick(1, 127.5, 520); // halfway between 10 and 45
-    const moveFrame = input.consumeFrameInput();
-    expect(moveFrame.moveAxis).toBe(1);
-    expect(moveFrame.moveScale).toBeCloseTo(0.5, 4);
+    // Reverse 10px back to 150 -> dx from followed origin (134) is +16 (wait, reverse 32px to 128 -> dx = -6 -> immediately reverses!)
+    input.updateJoystick(1, 128, 520);
+    expect(input.peekMove().axis).toBe(-1);
 
-    // Release joystick -> stopOnRelease stops grounded player immediately
+    // 1-frame reversal in PigeonFountainWorld
+    const world = new PigeonFountainWorld('stage', 1, tuning, 123);
+    world.step(toWorldStepInput(input.consumeFrameInput()), tuning.loop.fixedDtMs);
+    expect(world.player.vx).toBeLessThan(0);
+
+    input.updateJoystick(1, 154, 520);
+    world.step(toWorldStepInput(input.consumeFrameInput()), tuning.loop.fixedDtMs);
+    expect(world.player.vx).toBeGreaterThan(0);
+
+    // Release joystick -> stop immediately
     input.endPointer(1);
     const relFrame = input.consumeFrameInput();
-    expect(relFrame.moveAxis).toBe(0);
     expect(relFrame.stopOnRelease).toBe(true);
-
-    const world = new PigeonFountainWorld('stage', 1, tuning, 123);
-    world.player.vx = 180;
     world.step(toWorldStepInput(relFrame), tuning.loop.fixedDtMs);
     expect(world.player.vx).toBe(0);
   });
@@ -88,16 +96,13 @@ describe('core/input', () => {
     const input = new InputController('touch');
     expect(input.startJoystick(10, 100, 520, 'touch')).toBe(true);
 
-    // Same pointerId (already dragging) cannot trigger a button!
     expect(input.tryTriggerButton(10, 'bump', false, 'touch')).toBe(false);
     expect(input.tryTriggerButton(10, 'jump', false, 'touch')).toBe(false);
 
-    // A second finger (pointerId 20) can trigger bump/jump independently
     expect(input.tryTriggerButton(20, 'bump', false, 'touch')).toBe(true);
     const frame = input.consumeFrameInput();
     expect(frame.action).toBe(true);
 
-    // Airborne jump button triggers slam
     expect(input.tryTriggerButton(21, 'jump', true, 'touch')).toBe(true);
     const airFrame = input.consumeFrameInput();
     expect(airFrame.slam).toBe(true);

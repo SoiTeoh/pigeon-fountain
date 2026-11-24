@@ -18,6 +18,11 @@ import {
   type GameMode,
   type StageId,
 } from './platform/storage';
+import {
+  createRuntimeTuning,
+  loadTuneOverrides,
+  mountTunePanel,
+} from './platform/tunePanel';
 import { drawGameFrame } from './render/painter';
 import { SceneManager } from './scenes/manager';
 
@@ -50,12 +55,17 @@ function main(): void {
 
   const params = new URLSearchParams(window.location.search);
   const debugMode = params.get('debug') === '1';
+  const tuneMode = params.get('tune') === '1';
+  const activeTuning = tuneMode ? createRuntimeTuning(loadTuneOverrides()) : tuning;
+  if (tuneMode) {
+    mountTunePanel(activeTuning);
+  }
 
   const sound = new SoundEngine();
   let progress = readProgress();
   let gameMode: GameMode = 'stage';
   let selectedStageId: StageId = 1;
-  let world = new PigeonFountainWorld(gameMode, selectedStageId, tuning, generateRandomSeed());
+  let world = new PigeonFountainWorld(gameMode, selectedStageId, activeTuning, generateRandomSeed());
   let replayRecorder: ReplayRecorder | null = null;
   const sceneManager = new SceneManager('title');
   let animTimeSec = 0;
@@ -69,7 +79,10 @@ function main(): void {
     typeof window !== 'undefined' &&
     (window.innerWidth <= 768 ||
       (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0));
-  const inputController = new InputController(isTouchOrMobile ? 'touch' : 'keyboard');
+  const inputController = new InputController(
+    isTouchOrMobile ? 'touch' : 'keyboard',
+    activeTuning,
+  );
   let dpr = 1;
 
   function resizeCanvas(): void {
@@ -106,7 +119,7 @@ function main(): void {
   }
 
   function syncPreviewWorld(): void {
-    world = new PigeonFountainWorld(gameMode, selectedStageId, tuning, generateRandomSeed());
+    world = new PigeonFountainWorld(gameMode, selectedStageId, activeTuning, generateRandomSeed());
     replayRecorder = null;
   }
 
@@ -115,7 +128,7 @@ function main(): void {
     gameMode = mode;
     selectedStageId = stageId;
     const matchSeed = generateRandomSeed();
-    world = new PigeonFountainWorld(mode, stageId, tuning, matchSeed);
+    world = new PigeonFountainWorld(mode, stageId, activeTuning, matchSeed);
     replayRecorder = new ReplayRecorder(mode, stageId, matchSeed);
     soakAudioAcc = 0;
     plugHintText = null;
@@ -531,7 +544,7 @@ function main(): void {
         joystick: inputController.getJoystickVisual(),
         plugHintText,
       },
-      tuning,
+      activeTuning,
     );
     ctx.restore();
 

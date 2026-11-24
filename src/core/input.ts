@@ -39,7 +39,8 @@ export function computeJoystickResponse(
     return { axis: 0, scale: 0 };
   }
   const span = Math.max(1, maxRadiusPx - deadzonePx);
-  const scale = Math.min(1, (absDx - deadzonePx) / span);
+  const linear = Math.min(1, (absDx - deadzonePx) / span);
+  const scale = linear * linear; // Smooth quadratic acceleration curve
   return {
     axis: dx > 0 ? 1 : -1,
     scale,
@@ -113,6 +114,12 @@ export class InputController {
 
   updateJoystick(pointerId: number, x: number, y: number): boolean {
     if (this.joystickPointerId !== pointerId) return false;
+    const maxR = this.t.ui.controls.joystickMaxRadiusPx;
+    if (x - this.joystickOriginX > maxR) {
+      this.joystickOriginX = x - maxR;
+    } else if (x - this.joystickOriginX < -maxR) {
+      this.joystickOriginX = x + maxR;
+    }
     this.joystickCurrentX = x;
     this.joystickCurrentY = y;
     return true;
@@ -308,6 +315,7 @@ export function toWorldStepInput(input: UnifiedInput): WorldStepInput {
     moveDir: input.moveAxis,
     moveScale: input.moveScale,
     stopOnRelease: input.stopOnRelease,
+    directControl: input.moveScale !== undefined && input.moveTargetX === null,
     bumpPressed: input.action,
     jumpPressed: input.jump,
     slamPressed: Boolean(input.slam),
