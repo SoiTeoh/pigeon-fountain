@@ -707,10 +707,10 @@ describe('PigeonFountainWorld integration mechanics', () => {
     expect(ev.propSmashed).toBe(true);
     expect(world.pickups.some((p) => p.kind === 'melon_spark')).toBe(true);
 
-    // Clear hitstop + advance 8.1 seconds to verify Endless prop respawn
+    // Clear hitstop + advance 8.5 seconds to verify Endless prop respawn
     world.hitStopTimerSec = 0;
-    for (let i = 0; i < 165; i++) {
-      world.step({ moveDir: 0, bumpPressed: false, jumpPressed: false }, 50);
+    for (let i = 0; i < 510; i++) {
+      world.step({ moveDir: 0, bumpPressed: false, jumpPressed: false }, tuning.loop.fixedDtMs);
     }
     const refreshed = world.props.find((p) => p.id === melonProp.id)!;
     expect(refreshed.intact).toBe(true);

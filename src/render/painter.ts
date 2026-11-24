@@ -23,8 +23,24 @@ export function drawGameFrame(
   drawPlazaBackground(ctx, world, t, extra.animTimeSec);
   drawPropsAndPickups(ctx, world, extra.animTimeSec);
 
+  const plugRatio =
+    world.plug.activeSlotIndex !== null
+      ? Math.min(1, world.plug.holdSec / t.plug.maxDurationSec)
+      : 0;
+
   for (const n of world.match.nozzles) {
-    drawSingleFountainJet(ctx, n, t, extra.animTimeSec);
+    const isPlugged = world.plug.activeSlotIndex === n.slotIndex;
+    const isAdjacent =
+      world.plug.activeSlotIndex !== null &&
+      Math.abs(n.slotIndex - world.plug.activeSlotIndex) === 1;
+    drawSingleFountainJet(
+      ctx,
+      n,
+      t,
+      extra.animTimeSec,
+      isPlugged ? plugRatio : 0,
+      isAdjacent ? plugRatio : 0,
+    );
   }
 
   for (const r of world.rivals) {
@@ -64,14 +80,19 @@ export function drawGameFrame(
     });
   }
 
+  const plugJitterX =
+    world.plug.activeSlotIndex !== null
+      ? Math.sin(extra.animTimeSec * (45 + plugRatio * 40)) * (1.2 + plugRatio * 4.5)
+      : 0;
+
   drawBird(ctx, {
-    x: world.player.x,
+    x: world.player.x + plugJitterX,
     y: world.player.y,
     facing: world.player.facing,
     spinRad: world.player.spinRad,
     waddlePhase: world.player.waddlePhase,
-    squashX: world.player.squashX,
-    squashY: world.player.squashY,
+    squashX: world.player.squashX + (world.plug.activeSlotIndex !== null ? plugRatio * 0.14 : 0),
+    squashY: world.player.squashY - (world.plug.activeSlotIndex !== null ? plugRatio * 0.1 : 0),
     kind: 'player',
     expression: world.player.expression,
     bumpActive: world.player.bumpAnimSec > 0,

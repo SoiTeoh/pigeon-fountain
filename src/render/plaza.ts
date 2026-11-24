@@ -232,10 +232,48 @@ export function drawSingleFountainJet(
   n: FountainSlotState,
   t: Tuning,
   animTimeSec: number,
+  plugRatio = 0,
+  adjacentPlugRatio = 0,
 ): void {
-  if (n.phase === 'IDLE') return;
   const groundY = t.scene.groundY;
   const nx = n.x;
+
+  if (n.phase === 'PLUGGED') {
+    const pulse = 0.5 + 0.5 * Math.sin(animTimeSec * (16 + plugRatio * 24));
+    ctx.save();
+    ctx.strokeStyle = `rgba(250, 204, 21, ${0.55 + pulse * 0.45})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(nx, groundY - 2, 22 + plugRatio * 8, 7 + plugRatio * 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Small pressure gauge arc under plugged nozzle
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+    roundRect(ctx, nx - 20, groundY + 14, 40, 6, 3);
+    ctx.fill();
+    ctx.fillStyle = plugRatio >= 0.3 ? '#facc15' : '#38bdf8';
+    roundRect(ctx, nx - 19, groundY + 15, Math.max(4, 38 * plugRatio), 4, 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (adjacentPlugRatio > 0 && n.phase !== 'SURGE') {
+    const sprayH = 18 + adjacentPlugRatio * 56;
+    const pulse = 0.5 + 0.5 * Math.sin(animTimeSec * 22);
+    ctx.save();
+    ctx.fillStyle = `rgba(56, 189, 248, ${0.45 + adjacentPlugRatio * 0.4})`;
+    ctx.beginPath();
+    ctx.moveTo(nx - 10, groundY - 2);
+    ctx.lineTo(nx - 14 - adjacentPlugRatio * 6, groundY - sprayH - pulse * 6);
+    ctx.lineTo(nx + 14 + adjacentPlugRatio * 6, groundY - sprayH - pulse * 6);
+    ctx.lineTo(nx + 10, groundY - 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (n.phase === 'IDLE') return;
 
   if (n.phase === 'WARNING') {
     const pulse = 0.5 + 0.5 * Math.sin(animTimeSec * 14);

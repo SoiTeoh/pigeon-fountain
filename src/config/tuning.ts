@@ -177,6 +177,14 @@ export const tuning = {
     flashThreshold: 80,
     raceDurationSec: 60,
   },
+  plug: {
+    coreRadiusPx: 20,
+    maxDurationSec: 2.0,
+    adjacentSurgeThresholdSec: 0.6,
+    bigUltControlBonus: 8,
+    bigUltLaunchVy: -480,
+    cooldownSec: 3.0,
+  },
 } as const;
 
 export const STAGES: Record<StageId, StageConfig> = {
