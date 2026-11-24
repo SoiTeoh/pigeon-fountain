@@ -79,6 +79,30 @@ export class PigeonFountainWorld {
       expression: 'smug',
     };
     this.rivals = createRivalBirds(this.stage, t);
+
+    if (mode === 'tutorial') {
+      if (stageId === 1 && this.rivals[0]) {
+        // First 6s has no rival; open center nozzle immediately so player learns to sit
+        this.rivals[0].respawnTimerSec = 6.0;
+        this.match = {
+          ...this.match,
+          nozzles: this.match.nozzles.map((n, i) =>
+            i === 1 ? { ...n, phase: 'ACTIVE', phaseTimerSec: 5.5 } : n,
+          ),
+        };
+      } else if (stageId === 3 && this.rivals[0]) {
+        // White pigeon occupies center ACTIVE nozzle; left/right nozzles are IDLE for plugging
+        this.match = {
+          ...this.match,
+          nozzles: this.match.nozzles.map((n, i) =>
+            i === 1
+              ? { ...n, phase: 'ACTIVE', phaseTimerSec: 8.0 }
+              : { ...n, phase: 'IDLE', phaseTimerSec: 8.0 },
+          ),
+        };
+        this.rivals[0].x = this.match.nozzles[1]?.x ?? 195;
+      }
+    }
   }
 
   step(input: WorldStepInput, dtMs: number): WorldStepEvents {

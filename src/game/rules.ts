@@ -6,6 +6,10 @@ import {
   type StagePropPlacement,
   type Tuning,
 } from '../config/tuning';
+import {
+  getTutorialLevel,
+  tutorialLevelToStageConfig,
+} from '../content/levels/tutorials';
 import { mulberry32 } from '../core/rng';
 import type { GameMode, StageId } from '../platform/storage';
 import type {
@@ -76,7 +80,12 @@ export function evaluateStageStars(
 }
 
 export function getStageForMatch(mode: GameMode, stageId: StageId): StageConfig {
-  return mode === 'endless' ? ENDLESS_STAGE : STAGES[stageId];
+  if (mode === 'endless') return ENDLESS_STAGE;
+  if (mode === 'tutorial') {
+    const tutId = stageId === 1 ? 'tut-1' : stageId === 2 ? 'tut-2' : 'tut-3';
+    return tutorialLevelToStageConfig(getTutorialLevel(tutId));
+  }
+  return STAGES[stageId];
 }
 
 export function createInitialFountains(stage: StageConfig): FountainSlotState[] {

@@ -1,5 +1,6 @@
 export type StageId = 1 | 2 | 3 | 4;
-export type GameMode = 'stage' | 'endless';
+export type TutorialId = 'tut-1' | 'tut-2' | 'tut-3';
+export type GameMode = 'stage' | 'endless' | 'tutorial';
 
 export interface StorageBackend {
   getItem(key: string): string | null;
@@ -13,6 +14,7 @@ export interface PlayerProgress {
   readonly endlessBestScore: number;
   readonly classicFourButtons: boolean;
   readonly plugSuccessCount: number;
+  readonly tutorialStep: 1 | 2 | 3 | 'done';
 }
 
 const PROGRESS_STORAGE_KEY = 'pigeon_fountain_progress_v2';
@@ -47,6 +49,7 @@ export function createInitialProgress(): PlayerProgress {
     endlessBestScore: 0,
     classicFourButtons: false,
     plugSuccessCount: 0,
+    tutorialStep: 1,
   };
 }
 
@@ -64,14 +67,25 @@ function sanitizeScore(raw: unknown): number {
   return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
 }
 
+function sanitizeTutorialStep(
+  raw: unknown,
+  unlockedStage: StageId,
+  star1: 0 | 1 | 2 | 3,
+): 1 | 2 | 3 | 'done' {
+  if (raw === 1 || raw === 2 || raw === 3 || raw === 'done') return raw;
+  return unlockedStage > 1 || star1 > 0 ? 'done' : 1;
+}
+
 export function sanitizeProgress(raw: unknown): PlayerProgress {
   const base = createInitialProgress();
   if (!raw || typeof raw !== 'object') return base;
   const obj = raw as Partial<PlayerProgress>;
+  const unlockedStage = clampStageId(obj.unlockedStage);
+  const star1 = clampStars(obj.stars?.[1]);
   return {
-    unlockedStage: clampStageId(obj.unlockedStage),
+    unlockedStage,
     stars: {
-      1: clampStars(obj.stars?.[1]),
+      1: star1,
       2: clampStars(obj.stars?.[2]),
       3: clampStars(obj.stars?.[3]),
       4: clampStars(obj.stars?.[4]),
@@ -85,6 +99,7 @@ export function sanitizeProgress(raw: unknown): PlayerProgress {
     endlessBestScore: sanitizeScore(obj.endlessBestScore),
     classicFourButtons: Boolean(obj.classicFourButtons),
     plugSuccessCount: sanitizeScore(obj.plugSuccessCount),
+    tutorialStep: sanitizeTutorialStep(obj.tutorialStep, unlockedStage, star1),
   };
 }
 

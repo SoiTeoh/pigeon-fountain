@@ -1024,4 +1024,16 @@ describe('Stage progression, stars, and storage adapter', () => {
     expect(STAGES[3].rivals).toContain('red_crest');
     expect(STAGES[4].waveMode).toBe(true);
   });
+
+  it('configures 3 tutorial levels with delayed tut-1 rival and occupied center in tut-3', () => {
+    const tut1 = new PigeonFountainWorld('tutorial', 1, tuning, 111);
+    expect(tut1.rivals[0].respawnTimerSec).toBe(6.0);
+    expect(tut1.match.nozzles[1].phase).toBe('ACTIVE');
+
+    const tut3 = new PigeonFountainWorld('tutorial', 3, tuning, 333);
+    expect(tut3.match.nozzles[1].phase).toBe('ACTIVE');
+    expect(tut3.match.nozzles[0].phase).toBe('IDLE');
+    expect(tut3.match.nozzles[2].phase).toBe('IDLE');
+    expect(tut3.rivals[0].x).toBe(tut3.match.nozzles[1].x);
+  });
 });

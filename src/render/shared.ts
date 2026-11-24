@@ -49,6 +49,7 @@ export interface RenderExtra {
   readonly classicFourButtons: boolean;
   readonly joystick?: JoystickVisualState;
   readonly plugHintText?: string | null;
+  readonly showFingerDragHint?: boolean;
   readonly logicalHeight?: number;
   readonly safeTopPx?: number;
   readonly camera?: CameraView;

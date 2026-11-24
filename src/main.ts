@@ -80,6 +80,9 @@ async function main(): Promise<void> {
   let plugHintText: string | null = null;
   let plugHintTimerSec = 0;
   let plugGuideShownThisMatch = false;
+  let tutContestShown = false;
+  let tutSurgeShown = false;
+  let showFingerDragHint = false;
 
   // Unified input controller (touch + keyboard)
   const isTouchOrMobile =
@@ -168,12 +171,28 @@ async function main(): Promise<void> {
     plugHintText = null;
     plugHintTimerSec = 0;
     plugGuideShownThisMatch = false;
+    tutContestShown = false;
+    tutSurgeShown = false;
+    showFingerDragHint = mode === 'tutorial' && stageId === 1;
+    if (mode === 'tutorial') {
+      if (stageId === 1) {
+        plugHintText = STRINGS_ZH.tutorial.tut1Drag;
+        plugHintTimerSec = 5.5;
+      } else if (stageId === 3) {
+        plugHintText = STRINGS_ZH.tutorial.tut3Plug;
+        plugHintTimerSec = 3.5;
+      }
+    }
     clearInputs();
     sceneManager.transitionTo('playing');
   }
 
   function returnToHome(): void {
     clearInputs();
+    if (gameMode === 'tutorial') {
+      gameMode = 'stage';
+      selectedStageId = 1;
+    }
     syncPreviewWorld();
     sceneManager.transitionTo('title');
   }
@@ -265,11 +284,20 @@ async function main(): Promise<void> {
       const stageCleared =
         world.match.mode === 'stage' &&
         evaluateStageStars(world.match, STAGES[world.match.stageId]) >= 1;
-      const hasNext = stageCleared && world.match.stageId < 4;
+      const wonTut = world.match.mode === 'tutorial' && didPlayerWinRace(world.match);
+      const hasNext = (stageCleared && world.match.stageId < 4) || wonTut;
 
       if (hasNext && hitRect(opt, ui.primaryBtn)) {
         sound.playUiClick();
-        startNewGame('stage', (world.match.stageId + 1) as StageId);
+        if (world.match.mode === 'tutorial') {
+          if (world.match.stageId < 3) {
+            startNewGame('tutorial', (world.match.stageId + 1) as StageId);
+          } else {
+            startNewGame('stage', 1);
+          }
+        } else {
+          startNewGame('stage', (world.match.stageId + 1) as StageId);
+        }
         return;
       }
 
@@ -468,7 +496,29 @@ async function main(): Promise<void> {
     }
 
     if (
+      gameMode === 'tutorial' &&
+      selectedStageId === 1 &&
+      (world.match.elapsedSec >= 5.5 || Math.abs(world.player.vx) > 40)
+    ) {
+      showFingerDragHint = false;
+    }
+
+    if (gameMode === 'tutorial' && selectedStageId === 2) {
+      if (!tutContestShown && events.occupant === 'contested') {
+        tutContestShown = true;
+        plugHintText = STRINGS_ZH.tutorial.tut2Bump;
+        plugHintTimerSec = 3.0;
+      }
+      if (!tutSurgeShown && events.enteredPhases.includes('SURGE_WARN')) {
+        tutSurgeShown = true;
+        plugHintText = STRINGS_ZH.tutorial.tut2Dodge;
+        plugHintTimerSec = 2.5;
+      }
+    }
+
+    if (
       !plugGuideShownThisMatch &&
+      !(gameMode === 'tutorial' && selectedStageId < 3) &&
       progress.plugSuccessCount < 3 &&
       world.match.nozzles.some((n) => n.phase === 'IDLE' || n.phase === 'WARNING')
     ) {
@@ -571,7 +621,16 @@ async function main(): Promise<void> {
       }
       sceneManager.transitionTo('result');
       clearInputs();
-      if (world.match.mode === 'stage') {
+      if (world.match.mode === 'tutorial') {
+        if (didPlayerWinRace(world.match)) {
+          const nextTut =
+            world.match.stageId === 1 ? 2 : world.match.stageId === 2 ? 3 : 'done';
+          progress = {
+            ...progress,
+            tutorialStep: nextTut,
+          };
+        }
+      } else if (world.match.mode === 'stage') {
         const stars = evaluateStageStars(world.match, STAGES[world.match.stageId]);
         progress = applyStageCompletion(
           progress,
@@ -637,6 +696,7 @@ async function main(): Promise<void> {
         classicFourButtons: progress.classicFourButtons,
         joystick: inputController.getJoystickVisual(),
         plugHintText,
+        showFingerDragHint,
         logicalHeight,
         safeTopPx,
         camera,
@@ -648,7 +708,11 @@ async function main(): Promise<void> {
     window.requestAnimationFrame(frame);
   }
 
+  if (progress.tutorialStep !== 'done') {
+    startNewGame('tutorial', progress.tutorialStep);
+  }
+
   window.requestAnimationFrame(frame);
 }
 
-main();
+void main();

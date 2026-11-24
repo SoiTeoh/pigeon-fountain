@@ -484,6 +484,34 @@ export function drawHudAndControls(
       ctx.restore();
     }
 
+    if (extra.showFingerDragHint) {
+      const slide = Math.sin(extra.animTimeSec * 4.2) * 32;
+      const fx = 112 + slide;
+      const fy = 524;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(253, 224, 71, 0.7)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(76, fy);
+      ctx.lineTo(148, fy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#fde047';
+      ctx.strokeStyle = '#2B2B3A';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(fx, fy, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#0f172a';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('👆', fx, fy + 1);
+      ctx.restore();
+    }
+
     const airPred = world.player.airborne
       ? findPredictedPlugNozzle(
           world.player.x,

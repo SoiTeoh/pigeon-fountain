@@ -49,6 +49,12 @@ export const STRINGS_ZH = {
     contested: '抢！',
     fountainAngry: '喷泉生气了！',
   },
+  tutorial: {
+    tut1Drag: '拖动 → 走过去',
+    tut2Bump: '点【顶】挤走它',
+    tut2Dodge: '快躲开！',
+    tut3Plug: '跳起来堵空泉眼',
+  },
   pause: {
     heading: '⏸ 暂停抢泉',
     resume: '继续抢泉',

@@ -241,9 +241,11 @@ export function drawResultOverlay(
   const ui = t.ui.result;
   const stars = match.mode === 'stage' ? evaluateStageStars(match, stage) : 0;
   const stageCleared = match.mode === 'stage' && stars >= 1;
-  const hasNextStage = stageCleared && match.stageId < 4;
-  const maxRivalCtrl = getMaxRivalControl(match);
   const wonRace = didPlayerWinRace(match);
+  const hasNextStage =
+    (stageCleared && match.stageId < 4) ||
+    (match.mode === 'tutorial' && wonRace);
+  const maxRivalCtrl = getMaxRivalControl(match);
 
   ctx.fillStyle = 'rgba(15, 23, 42, 0.68)';
   ctx.fillRect(0, 0, width, layout.logicalHeight);
@@ -262,32 +264,37 @@ export function drawResultOverlay(
   const headline =
     match.mode === 'endless'
       ? '无尽乱斗账单'
-      : wonRace
-        ? `第 ${match.stageId} 关制霸成功！`
-        : match.endReason === 'rival_full'
-          ? '被对手抢先满 100！'
-          : '时间到，惜败！';
+      : match.mode === 'tutorial'
+        ? wonRace
+          ? `教学 ${match.stageId} 通关！`
+          : '再试一次吧！'
+        : wonRace
+          ? `第 ${match.stageId} 关制霸成功！`
+          : match.endReason === 'rival_full'
+            ? '被对手抢先满 100！'
+            : '时间到，惜败！';
   ctx.fillText(headline, width / 2, 124);
 
-  if (match.mode === 'stage') {
-    const starStr = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-    ctx.fillStyle = stars > 0 ? '#f59e0b' : '#94a3b8';
+  if (match.mode === 'stage' || match.mode === 'tutorial') {
+    const starCount = match.mode === 'tutorial' ? (wonRace ? 3 : 0) : stars;
+    const starStr = '★'.repeat(starCount) + '☆'.repeat(3 - starCount);
+    ctx.fillStyle = starCount > 0 ? '#f59e0b' : '#94a3b8';
     ctx.font = 'bold 28px sans-serif';
     ctx.fillText(starStr, width / 2, 162);
   }
 
-  ctx.fillStyle = match.mode === 'stage' ? (wonRace ? '#0284c7' : '#ef4444') : '#ea580c';
+  ctx.fillStyle = match.mode !== 'endless' ? (wonRace ? '#0284c7' : '#ef4444') : '#ea580c';
   ctx.font = '900 30px sans-serif';
   ctx.fillText(
-    match.mode === 'stage'
+    match.mode !== 'endless'
       ? `我方 ${Math.round(match.playerControl)}% vs ${Math.round(maxRivalCtrl)}%`
       : `${Math.floor(match.score)} 分`,
     width / 2,
-    match.mode === 'stage' ? 204 : 182,
+    match.mode !== 'endless' ? 204 : 182,
   );
 
   const rows =
-    match.mode === 'stage'
+    match.mode !== 'endless'
       ? [
           ['占领喷泉时长', `${match.soakSec.toFixed(1)} 秒`],
           ['使坏轰飞对手', `${match.sabotageCount} 次`],
@@ -333,7 +340,11 @@ export function drawResultOverlay(
     ctx.font = '900 16px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(
-      `下一关：第 ${match.stageId + 1} 关 ▶`,
+      match.mode === 'tutorial'
+        ? match.stageId < 3
+          ? `进入教学 ${match.stageId + 1} ▶`
+          : '进入第 1 关 ▶'
+        : `下一关：第 ${match.stageId + 1} 关 ▶`,
       ui.primaryBtn.x + ui.primaryBtn.w / 2,
       ui.primaryBtn.y + ui.primaryBtn.h / 2 + 1,
     );
