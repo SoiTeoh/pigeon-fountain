@@ -10,6 +10,25 @@ import type {
   ShockwaveRing,
 } from './worldTypes';
 
+export const MAX_PARTICLES = 150;
+export const MAX_FLOATING_TEXTS = 2;
+
+function pushPooledParticle(particles: Particle[], next: Particle): void {
+  if (particles.length < MAX_PARTICLES) {
+    particles.push(next);
+    return;
+  }
+  let oldestIdx = 0;
+  let minLife = particles[0].life;
+  for (let i = 1; i < particles.length; i++) {
+    if (particles[i].life < minLife) {
+      minLife = particles[i].life;
+      oldestIdx = i;
+    }
+  }
+  particles[oldestIdx] = next;
+}
+
 export function spawnParticleBurst(
   particles: Particle[],
   fxRng: () => number,
@@ -24,7 +43,7 @@ export function spawnParticleBurst(
   for (let i = 0; i < count; i++) {
     const ang = -Math.PI + fxRng() * Math.PI;
     const spd = speedMin + fxRng() * (speedMax - speedMin);
-    particles.push({
+    pushPooledParticle(particles, {
       x: x + (fxRng() - 0.5) * 18,
       y: y + (fxRng() - 0.5) * 10,
       vx: Math.cos(ang) * spd,
@@ -67,11 +86,15 @@ export function pushFloatingText(
   color: string,
   scale = 1,
 ): void {
+  void color;
+  while (floats.length >= MAX_FLOATING_TEXTS) {
+    floats.shift();
+  }
   floats.push({
     x: clamp(x, 66, t.view.width - 66),
     y: clamp(y, 88, t.scene.groundY - 20),
     text,
-    color,
+    color: '#fde047',
     scale,
     life: 1.15,
     maxLife: 1.15,

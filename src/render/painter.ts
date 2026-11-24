@@ -1,6 +1,6 @@
 import { tuning, type Tuning } from '../config/tuning';
 import { findNearbyPluggableNozzles, findPredictedPlugNozzle } from '../game/plug';
-import { evaluateNozzleOccupant } from '../game/rules';
+import { didPlayerWinRace, evaluateNozzleOccupant } from '../game/rules';
 import type { PigeonFountainWorld, RivalBird } from '../game/world';
 import { drawPauseOverlay, drawResultOverlay, drawTitleOverlay } from '../scenes/overlays';
 import { drawBird } from './actors/birds';
@@ -200,21 +200,55 @@ export function drawGameFrame(
       ? Math.sin(extra.animTimeSec * (45 + plugRatio * 40)) * (1.2 + plugRatio * 4.5)
       : 0;
 
+  const isResult = extra.screenMode === 'result';
+  const playerWon = isResult ? didPlayerWinRace(world.match) : false;
+  const playerLost = isResult && !playerWon;
+
   drawBird(ctx, {
     x: world.player.x + plugJitterX,
     y: world.player.y,
     facing: world.player.facing,
     spinRad: world.player.spinRad,
     waddlePhase: world.player.waddlePhase,
-    squashX: world.player.squashX + (world.plug.activeSlotIndex !== null ? plugRatio * 0.14 : 0),
-    squashY: world.player.squashY - (world.plug.activeSlotIndex !== null ? plugRatio * 0.1 : 0),
+    squashX:
+      (playerWon ? 1.06 : playerLost ? 1.28 : world.player.squashX) +
+      (world.plug.activeSlotIndex !== null ? plugRatio * 0.14 : 0),
+    squashY:
+      (playerWon ? 0.96 : playerLost ? 0.72 : world.player.squashY) -
+      (world.plug.activeSlotIndex !== null ? plugRatio * 0.1 : 0),
     kind: 'player',
-    expression: world.player.expression,
+    expression: playerWon ? 'smug' : playerLost ? 'panic' : world.player.expression,
     bumpActive: world.player.bumpAnimSec > 0,
     stunned: false,
     redCrestChargeRatio: 0,
     animTimeSec: extra.animTimeSec,
   });
+
+  if (playerLost) {
+    // Comic rain cloud + drops over defeated wet pigeon
+    const cx = world.player.x;
+    const cy = world.player.y - 58;
+    ctx.save();
+    ctx.fillStyle = '#475569';
+    ctx.strokeStyle = '#2B2B3A';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(cx - 10, cy, 10, 0, Math.PI * 2);
+    ctx.arc(cx + 2, cy - 4, 13, 0, Math.PI * 2);
+    ctx.arc(cx + 14, cy, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    for (let i = -1; i <= 1; i++) {
+      const dropY = cy + 12 + ((extra.animTimeSec * 48 + i * 7) % 14);
+      ctx.beginPath();
+      ctx.moveTo(cx + i * 9, dropY);
+      ctx.lineTo(cx + i * 9 - 2, dropY + 5);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   drawParticlesShockwavesAndFloats(ctx, world);
   ctx.restore();

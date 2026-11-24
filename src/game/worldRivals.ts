@@ -416,7 +416,7 @@ export function performPlayerBump(
     if (targets.length >= 2) {
       pushFloatingText(floats, t, player.x, t.scene.groundY - 68, '一锅端！', '#fde047', 1.12);
     }
-    return { bumpedHit: true, bumpedWhiff: false, shakeMagDelta: 5 };
+    return { bumpedHit: true, bumpedWhiff: false, shakeMagDelta: 3 };
   }
   return { bumpedHit: false, bumpedWhiff: true, shakeMagDelta: 0 };
 }

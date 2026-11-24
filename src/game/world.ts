@@ -45,6 +45,7 @@ export class PigeonFountainWorld {
   private soakFxAcc = 0;
   private cornSpawnTimerSec = 6.5;
   private nextPickupIdRef = { value: 1 };
+  private wasPlayerOnActive = false;
 
   constructor(
     mode: GameMode = 'stage',
@@ -245,6 +246,9 @@ export class PigeonFountainWorld {
       bumpedHit = bumpRes.bumpedHit;
       bumpedWhiff = bumpRes.bumpedWhiff;
       this.shakeMag = Math.max(this.shakeMag, bumpRes.shakeMagDelta);
+      if (bumpRes.bumpedHit) {
+        this.hitStopTimerSec = Math.max(this.hitStopTimerSec, this.t.props.hitStopSec);
+      }
     }
 
     // Integrate positions
@@ -356,6 +360,8 @@ export class PigeonFountainWorld {
         this.player.squashX = 1.35;
         this.player.squashY = 0.65;
         pushFloatingText(this.floats, this.t, plugTarget.x, this.t.scene.groundY - 66, '堵住憋压中...', '#fde047', 1.05);
+      } else {
+        spawnParticleBurst(this.particles, this.fxRng, this.player.x, this.t.scene.groundY - 4, 6, 'spark', '#cbd5e1', 40, 110);
       }
     } else {
       this.player.x = clamp(this.player.x, 20, this.t.view.width - 20);
@@ -658,6 +664,14 @@ export class PigeonFountainWorld {
       this.t,
     );
 
+    const enteredActiveWater = this.occupant === 'player' && !this.wasPlayerOnActive;
+    if (enteredActiveWater) {
+      this.player.squashX = 1.24;
+      this.player.squashY = 0.85;
+      spawnParticleBurst(this.particles, this.fxRng, this.player.x, this.t.scene.groundY - 8, 8, 'water', '#bae6fd', 50, 140);
+    }
+    this.wasPlayerOnActive = this.occupant === 'player';
+
     // Ambient fountain bubbles & plug pressure particles
     const fxAcc = spawnAmbientFountainParticles(
       this.particles,
@@ -688,6 +702,8 @@ export class PigeonFountainWorld {
       angledCannonLaunch: rivalRes.angledCannonLaunch,
       plugStarted,
       plugBigUlt: plugRes.bigUltTriggered,
+      enteredActiveWater,
+      angryWarnTriggered: ruleRes.angryWarnSlots.length > 0,
       occupant: this.occupant,
       combo: this.combo,
     };

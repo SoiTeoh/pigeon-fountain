@@ -61,4 +61,32 @@ describe('core/replay', () => {
     const payload = serializeReplay(recorder.finalize());
     expect(new TextEncoder().encode(payload).byteLength).toBeLessThan(2048);
   });
+
+  it('maintains identical replay hash even when slow-mo changes step cadence per frame', () => {
+    const seed = 987654;
+    const liveWorld = new PigeonFountainWorld('stage', 1, tuning, seed);
+    const recorder = new ReplayRecorder('stage', 1, seed);
+
+    let acc = 0;
+    for (let realFrame = 0; realFrame < 240; realFrame++) {
+      const inSlowMo = realFrame >= 60 && realFrame < 100;
+      acc += tuning.loop.fixedDtMs * (inSlowMo ? 0.35 : 1);
+      while (acc >= tuning.loop.fixedDtMs) {
+        const input: UnifiedInput = {
+          moveTargetX: null,
+          moveAxis: realFrame % 40 < 20 ? 1 : -1,
+          action: realFrame % 50 === 10,
+          jump: realFrame % 70 === 20,
+        };
+        recorder.recordFrame(input);
+        liveWorld.step(toWorldStepInput(input), tuning.loop.fixedDtMs);
+        acc -= tuning.loop.fixedDtMs;
+      }
+    }
+
+    const liveHash = liveWorld.getStateHash();
+    const parsed = parseReplay(serializeReplay(recorder.finalize(liveHash)));
+    const replayed = runReplay(parsed, tuning);
+    expect(replayed.finalHash).toBe(liveHash);
+  });
 });

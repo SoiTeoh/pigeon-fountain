@@ -126,6 +126,8 @@ export interface WorldStepEvents {
   readonly angledCannonLaunch: boolean;
   readonly plugStarted: boolean;
   readonly plugBigUlt: boolean;
+  readonly enteredActiveWater: boolean;
+  readonly angryWarnTriggered: boolean;
   readonly occupant: Occupant;
   readonly combo: 1 | 2 | 3;
 }
@@ -148,6 +150,8 @@ export function createEmptyWorldEvents(
     angledCannonLaunch: false,
     plugStarted: false,
     plugBigUlt: false,
+    enteredActiveWater: false,
+    angryWarnTriggered: false,
     occupant,
     combo,
   };

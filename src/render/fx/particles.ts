@@ -48,12 +48,13 @@ export function drawParticlesShockwavesAndFloats(
     const alpha = Math.max(0, Math.min(1, f.life / f.maxLife));
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.font = `900 ${Math.round(17 * f.scale)}px sans-serif`;
+    ctx.font = `900 ${Math.round(18 * f.scale)}px "PingFang SC", "Microsoft YaHei", sans-serif`;
     ctx.textAlign = 'center';
-    ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#2B2B3A';
+    ctx.lineWidth = 4.5;
     ctx.strokeText(f.text, f.x, f.y);
-    ctx.fillStyle = f.color;
+    ctx.fillStyle = '#fde047';
     ctx.fillText(f.text, f.x, f.y);
     ctx.restore();
   }

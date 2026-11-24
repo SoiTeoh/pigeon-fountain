@@ -6,7 +6,9 @@ import { ReplayRecorder } from './core/replay';
 import { generateRandomSeed } from './core/rng';
 import { SoundEngine } from './game/audio';
 import {
+  didPlayerWinRace,
   evaluateStageStars,
+  getMaxRivalControl,
   shouldAdvanceSimulation,
 } from './game/rules';
 import { PigeonFountainWorld } from './game/world';
@@ -71,6 +73,10 @@ async function main(): Promise<void> {
   const sceneManager = new SceneManager('title');
   let animTimeSec = 0;
   let soakAudioAcc = 0;
+  let plugAudioAcc = 0;
+  let heartbeatAcc = 0;
+  let slowMoTimerSec = 0;
+  let zoomOverrideTimerSec = 0;
   let plugHintText: string | null = null;
   let plugHintTimerSec = 0;
   let plugGuideShownThisMatch = false;
@@ -155,6 +161,10 @@ async function main(): Promise<void> {
     world = new PigeonFountainWorld(mode, stageId, activeTuning, matchSeed);
     replayRecorder = new ReplayRecorder(mode, stageId, matchSeed);
     soakAudioAcc = 0;
+    plugAudioAcc = 0;
+    heartbeatAcc = 0;
+    slowMoTimerSec = 0;
+    zoomOverrideTimerSec = 0;
     plugHintText = null;
     plugHintTimerSec = 0;
     plugGuideShownThisMatch = false;
@@ -510,6 +520,40 @@ async function main(): Promise<void> {
       sound.playLaunchSquawk(true);
     }
 
+    if (events.enteredActiveWater) {
+      sound.playPigeonCoo(Math.floor(Math.random() * 3));
+    }
+    if (events.plugBigUlt) {
+      slowMoTimerSec = 0.3;
+      zoomOverrideTimerSec = 0.35;
+    }
+    if (events.angryWarnTriggered) {
+      sound.playFountainAngry();
+    }
+    if (world.plug.activeSlotIndex !== null) {
+      plugAudioAcc += dtSec;
+      if (plugAudioAcc >= 0.18) {
+        plugAudioAcc = 0;
+        sound.playPlugChargeTick(world.plug.holdSec / activeTuning.plug.maxDurationSec);
+      }
+    } else {
+      plugAudioAcc = 0;
+    }
+
+    const highTension =
+      Math.max(world.match.playerControl, getMaxRivalControl(world.match)) >=
+      activeTuning.control.flashThreshold;
+    sound.stepBgm(dtSec, highTension);
+    if (highTension) {
+      heartbeatAcc += dtSec;
+      if (heartbeatAcc >= 0.55) {
+        heartbeatAcc = 0;
+        sound.playHeartbeat();
+      }
+    } else {
+      heartbeatAcc = 0;
+    }
+
     if (events.occupant === 'player') {
       soakAudioAcc += dtSec;
       if (soakAudioAcc >= 0.42) {
@@ -522,6 +566,9 @@ async function main(): Promise<void> {
 
     if (world.match.finished) {
       replayRecorder?.finalize(world.getStateHash());
+      if (!didPlayerWinRace(world.match)) {
+        sound.playLoseCloud();
+      }
       sceneManager.transitionTo('result');
       clearInputs();
       if (world.match.mode === 'stage') {
@@ -542,7 +589,16 @@ async function main(): Promise<void> {
   function frame(nowMs: number): void {
     const elapsed = Math.min(tuning.loop.maxFrameDtMs, Math.max(0, nowMs - lastTimeMs));
     lastTimeMs = nowMs;
-    accumulatorMs += elapsed;
+    const elapsedSec = elapsed / 1000;
+    if (slowMoTimerSec > 0) {
+      slowMoTimerSec = Math.max(0, slowMoTimerSec - elapsedSec);
+      accumulatorMs += elapsed * 0.35;
+    } else {
+      accumulatorMs += elapsed;
+    }
+    if (zoomOverrideTimerSec > 0) {
+      zoomOverrideTimerSec = Math.max(0, zoomOverrideTimerSec - elapsedSec);
+    }
 
     while (accumulatorMs >= tuning.loop.fixedDtMs) {
       stepSimulation(tuning.loop.fixedDtMs);
@@ -550,10 +606,16 @@ async function main(): Promise<void> {
     }
 
     if (sceneManager.mode === 'title') {
-      animTimeSec += elapsed / 1000;
+      animTimeSec += elapsedSec;
     }
 
-    camera = stepCameraState(camera, world, elapsed / 1000, activeTuning);
+    camera = stepCameraState(
+      camera,
+      world,
+      elapsedSec,
+      activeTuning,
+      zoomOverrideTimerSec > 0 ? 1.45 : null,
+    );
 
     const activeDir = computeMoveDir();
     ctx.save();
