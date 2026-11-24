@@ -5,7 +5,7 @@ import {
   type StageConfig,
   type Tuning,
 } from '../config/tuning';
-import { DEFAULT_SIM_SEED, hashState, mulberry32, normalizeSeed } from '../core/rng';
+import { generateRandomSeed, hashState, mulberry32, normalizeSeed } from '../core/rng';
 import type { GameMode, StageId } from '../platform/storage';
 import {
   checkPropHit,
@@ -202,10 +202,10 @@ export class PigeonFountainWorld {
     mode: GameMode = 'stage',
     stageId: StageId = 1,
     t: Tuning = tuning,
-    seed: number = DEFAULT_SIM_SEED,
+    seed?: number,
   ) {
     this.t = t;
-    this.seed = normalizeSeed(seed);
+    this.seed = seed !== undefined ? normalizeSeed(seed) : generateRandomSeed();
     this.simRng = mulberry32(this.seed);
     this.fxRng = mulberry32(this.seed ^ 0xa5a5a5a5);
     this.stage = getStageForMatch(mode, stageId);

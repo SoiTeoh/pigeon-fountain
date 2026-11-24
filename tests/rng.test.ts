@@ -64,4 +64,25 @@ describe('core/rng determinism', () => {
   it('hashState normalizes object key order and -0', () => {
     expect(hashState({ a: 1, b: -0 })).toBe(hashState({ b: 0, a: 1 }));
   });
+
+  it('generates different seeds when seed is omitted, and identical results when seed is specified', () => {
+    const w1 = new PigeonFountainWorld('stage', 1, tuning);
+    const w2 = new PigeonFountainWorld('stage', 1, tuning);
+    expect(w1.seed).not.toBe(w2.seed);
+
+    const fixedSeed = 31415926;
+    const a = new PigeonFountainWorld('stage', 1, tuning, fixedSeed);
+    const b = new PigeonFountainWorld('stage', 1, tuning, fixedSeed);
+    for (let i = 0; i < 300; i++) {
+      const input: WorldStepInput = {
+        moveDir: i % 60 < 30 ? 1 : -1,
+        bumpPressed: i % 40 === 0,
+        jumpPressed: i % 50 === 0,
+      };
+      a.step(input, tuning.loop.fixedDtMs);
+      b.step(input, tuning.loop.fixedDtMs);
+    }
+    expect(a.seed).toBe(fixedSeed);
+    expect(a.getStateHash()).toBe(b.getStateHash());
+  });
 });

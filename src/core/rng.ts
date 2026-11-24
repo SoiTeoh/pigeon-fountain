@@ -11,6 +11,19 @@ export function normalizeSeed(seed: number): number {
   return u32 === 0 ? DEFAULT_SIM_SEED : u32;
 }
 
+/**
+ * Generates a fresh non-zero uint32 seed for starting a new match outside simulation logic.
+ */
+export function generateRandomSeed(): number {
+  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.getRandomValues === 'function') {
+    const buf = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(buf);
+    return normalizeSeed(buf[0]);
+  }
+  const fallback = (Date.now() ^ Math.floor(performance.now() * 1000)) >>> 0;
+  return normalizeSeed(fallback);
+}
+
 export function mulberry32(seed: number): () => number {
   let state = normalizeSeed(seed);
   return () => {

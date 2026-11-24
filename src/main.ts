@@ -1,6 +1,8 @@
 import './style.css';
 import { STAGES, tuning } from './config/tuning';
 import { InputController, toWorldStepInput } from './core/input';
+import { ReplayRecorder } from './core/replay';
+import { generateRandomSeed } from './core/rng';
 import { SoundEngine } from './game/audio';
 import {
   evaluateStageStars,
@@ -52,7 +54,8 @@ function main(): void {
   let progress = readProgress();
   let gameMode: GameMode = 'stage';
   let selectedStageId: StageId = 1;
-  let world = new PigeonFountainWorld(gameMode, selectedStageId, tuning);
+  let world = new PigeonFountainWorld(gameMode, selectedStageId, tuning, generateRandomSeed());
+  let replayRecorder: ReplayRecorder | null = null;
   const sceneManager = new SceneManager('title');
   let animTimeSec = 0;
   let soakAudioAcc = 0;
@@ -99,14 +102,17 @@ function main(): void {
   }
 
   function syncPreviewWorld(): void {
-    world = new PigeonFountainWorld(gameMode, selectedStageId, tuning);
+    world = new PigeonFountainWorld(gameMode, selectedStageId, tuning, generateRandomSeed());
+    replayRecorder = null;
   }
 
   function startNewGame(mode: GameMode = gameMode, stageId: StageId = selectedStageId): void {
     sound.unlock();
     gameMode = mode;
     selectedStageId = stageId;
-    world = new PigeonFountainWorld(mode, stageId, tuning);
+    const matchSeed = generateRandomSeed();
+    world = new PigeonFountainWorld(mode, stageId, tuning, matchSeed);
+    replayRecorder = new ReplayRecorder(mode, stageId, matchSeed);
     soakAudioAcc = 0;
     clearInputs();
     sceneManager.transitionTo('playing');
@@ -376,6 +382,7 @@ function main(): void {
     animTimeSec += dtSec;
 
     const unifiedInput = inputController.consumeFrameInput();
+    replayRecorder?.recordFrame(unifiedInput);
     const events = world.step(toWorldStepInput(unifiedInput), dtMs);
 
     if (events.bumpedHit || events.bumpedWhiff) {
@@ -420,6 +427,7 @@ function main(): void {
     }
 
     if (world.match.finished) {
+      replayRecorder?.finalize(world.getStateHash());
       sceneManager.transitionTo('result');
       clearInputs();
       if (world.match.mode === 'stage') {
