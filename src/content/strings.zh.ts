@@ -31,6 +31,7 @@ export const STRINGS_ZH = {
     cooling: '回气中...',
     plugGuideFirst: '跳起来，坐住空泉眼！',
     plugSuccessFirst: '学会堵泉！旁边会炸！',
+    contested: '抢！',
   },
   pause: {
     heading: '⏸ 暂停抢泉',

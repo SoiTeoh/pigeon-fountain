@@ -1,5 +1,6 @@
 import { tuning, type Tuning } from '../config/tuning';
 import { findNearbyPluggableNozzles, findPredictedPlugNozzle } from '../game/plug';
+import { evaluateNozzleOccupant } from '../game/rules';
 import type { PigeonFountainWorld, RivalBird } from '../game/world';
 import { drawPauseOverlay, drawResultOverlay, drawTitleOverlay } from '../scenes/overlays';
 import { drawBird } from './actors/birds';
@@ -35,11 +36,26 @@ export function drawGameFrame(
       ? Math.min(1, world.plug.holdSec / t.plug.maxDurationSec)
       : 0;
 
+  const rivalXs = world.rivals.map((r) => (r.respawnTimerSec > 0 ? -999 : r.x));
+  const rivalAirbornes = world.rivals.map(
+    (r) => r.airborne || r.respawnTimerSec > 0 || r.stunTimerSec > 0,
+  );
+
   for (const n of world.match.nozzles) {
     const isPlugged = world.plug.activeSlotIndex === n.slotIndex;
     const isAdjacent =
       world.plug.activeSlotIndex !== null &&
       Math.abs(n.slotIndex - world.plug.activeSlotIndex) === 1;
+    const isContested =
+      n.phase === 'ACTIVE' &&
+      evaluateNozzleOccupant(
+        world.player.x,
+        rivalXs,
+        n.x,
+        world.player.airborne,
+        rivalAirbornes,
+        t.fountain.coreRadiusPx,
+      ) === 'contested';
     drawSingleFountainJet(
       ctx,
       n,
@@ -47,6 +63,7 @@ export function drawGameFrame(
       extra.animTimeSec,
       isPlugged ? plugRatio : 0,
       isAdjacent ? plugRatio : 0,
+      isContested,
     );
   }
 

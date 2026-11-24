@@ -1,17 +1,22 @@
-import { tuning, type AiArchetype, type Tuning } from '../config/tuning';
+import { tuning, type AiArchetype, type AiTier, type Tuning } from '../config/tuning';
 import type { FountainPhase, FountainSlotState } from './rules';
 
-export type AiIntent = 'chase' | 'contest' | 'flee' | 'roam' | 'stunned' | 'charge' | 'lunge';
+export type AiIntent = 'chase' | 'contest' | 'flee' | 'roam' | 'stunned' | 'charge' | 'lunge' | 'plug';
 export type RedCrestPhase = 'idle' | 'charging' | 'lunging' | 'whiff_stun';
 
 export interface AiDecisionInput {
   readonly archetype: AiArchetype;
+  readonly tier?: AiTier;
   readonly birdIndex: number;
   readonly aiX: number;
   readonly playerX: number;
   readonly nozzles: readonly FountainSlotState[];
   readonly stunTimerSec: number;
   readonly surgeReactElapsedSec: number;
+  readonly contestTimerSec?: number;
+  readonly bumpCooldownSec?: number;
+  readonly plugCooldownSec?: number;
+  readonly playerPlugSlotIndex?: number | null;
   readonly redCrestState: RedCrestPhase;
   readonly redCrestTimerSec: number;
   readonly redCrestCooldownSec: number;
@@ -24,26 +29,34 @@ export interface AiDecision {
   readonly moveDir: -1 | 0 | 1;
   readonly intent: AiIntent;
   readonly nextSurgeReactElapsedSec: number;
+  readonly nextContestTimerSec: number;
   readonly nextRedCrestState: RedCrestPhase;
   readonly nextRedCrestTimerSec: number;
   readonly nextRedCrestCooldownSec: number;
   readonly nextRedCrestDir: -1 | 1;
   readonly speedMultiplier: number;
   readonly startedCharge: boolean;
+  readonly shouldBump: boolean;
+  readonly shouldJumpToPlug: boolean;
 }
 
-function findNearestNozzleByPhases(
-  aiX: number,
-  nozzles: readonly FountainSlotState[],
+function findBestNozzle(
+  input: AiDecisionInput,
   phases: readonly FountainPhase[],
+  avoidPlugSlot: number | null,
+  preferSteal: boolean,
 ): FountainSlotState | null {
   let best: FountainSlotState | null = null;
-  let bestDist = Number.POSITIVE_INFINITY;
-  for (const n of nozzles) {
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const n of input.nozzles) {
     if (!phases.includes(n.phase)) continue;
-    const d = Math.abs(n.x - aiX);
-    if (d < bestDist) {
-      bestDist = d;
+    if (avoidPlugSlot !== null && Math.abs(n.slotIndex - avoidPlugSlot) === 1) continue;
+    let score = Math.abs(n.x - input.aiX);
+    if (preferSteal && Math.abs(input.playerX - n.x) < 52) {
+      score += 120; // Sparrows prefer sneaking into unguarded nozzles
+    }
+    if (score < bestScore) {
+      bestScore = score;
       best = n;
     }
   }
@@ -51,42 +64,48 @@ function findNearestNozzleByPhases(
 }
 
 /**
- * Pure AI decision logic for all 3 bird archetypes:
- * - Hit-stun (`stunTimerSec > 0`) freezes active AI movement and surge fleeing.
- * - `SURGE_WARN` keeps ~0.36s derpy reaction delay before fleeing.
- * - `red_crest` charges for 0.60s and lunges; whiffing triggers 0.75s recovery stun.
+ * Tiered AI decision logic (T1 / T2 / T3) + archetype personalities:
+ * - T1: chases ACTIVE, bumps after >1.2s contention (2.5s CD), 0.55s delay, doesn't flee SURGE_WARN.
+ * - T2: + flees SURGE_WARN (0.42s delay) & seeks WARNING nozzles early.
+ * - T3: + avoids nozzles adjacent to player's PLUGGED nozzle, & plugs adjacent empty nozzles when player sits on ACTIVE.
  */
 export function decideAiMove(input: AiDecisionInput, t: Tuning = tuning): AiDecision {
   const dt = input.dtSec ?? t.loop.fixedDtMs / 1000;
+  const tier: AiTier = input.tier ?? 2;
+  const tierSpec = t.aiTiers[tier];
   const nextCooldown = Math.max(0, input.redCrestCooldownSec - dt);
+  const bumpCd = Math.max(0, (input.bumpCooldownSec ?? 0) - dt);
+  const plugCd = Math.max(0, (input.plugCooldownSec ?? 0) - dt);
+  const prevContest = input.contestTimerSec ?? 0;
+  const playerPlugSlot = tierSpec.avoidPlayerPlug ? (input.playerPlugSlotIndex ?? null) : null;
+
+  const baseIdle = {
+    nextSurgeReactElapsedSec: input.surgeReactElapsedSec,
+    nextContestTimerSec: 0,
+    nextRedCrestState: 'idle' as RedCrestPhase,
+    nextRedCrestTimerSec: 0,
+    nextRedCrestCooldownSec: nextCooldown,
+    nextRedCrestDir: input.redCrestDir,
+    speedMultiplier: 1,
+    startedCharge: false,
+    shouldBump: false,
+    shouldJumpToPlug: false,
+  };
 
   if (input.stunTimerSec > 0) {
-    return {
-      moveDir: 0,
-      intent: 'stunned',
-      nextSurgeReactElapsedSec: input.surgeReactElapsedSec,
-      nextRedCrestState: 'idle',
-      nextRedCrestTimerSec: 0,
-      nextRedCrestCooldownSec: nextCooldown,
-      nextRedCrestDir: input.redCrestDir,
-      speedMultiplier: 1,
-      startedCharge: false,
-    };
+    return { ...baseIdle, moveDir: 0, intent: 'stunned' };
   }
 
+  // Red-crest charge/lunge state machine
   if (input.archetype === 'red_crest') {
     if (input.redCrestState === 'whiff_stun') {
       const rem = Math.max(0, input.redCrestTimerSec - dt);
       return {
+        ...baseIdle,
         moveDir: 0,
         intent: 'stunned',
-        nextSurgeReactElapsedSec: input.surgeReactElapsedSec,
         nextRedCrestState: rem > 0 ? 'whiff_stun' : 'idle',
         nextRedCrestTimerSec: rem,
-        nextRedCrestCooldownSec: nextCooldown,
-        nextRedCrestDir: input.redCrestDir,
-        speedMultiplier: 1,
-        startedCharge: false,
       };
     }
 
@@ -94,27 +113,24 @@ export function decideAiMove(input: AiDecisionInput, t: Tuning = tuning): AiDeci
       const rem = input.redCrestTimerSec - dt;
       if (rem <= 0) {
         return {
+          ...baseIdle,
           moveDir: input.redCrestDir,
           intent: 'lunge',
           nextSurgeReactElapsedSec: 0,
           nextRedCrestState: 'lunging',
           nextRedCrestTimerSec: t.pigeon.redCrestLungeSec,
           nextRedCrestCooldownSec: t.pigeon.redCrestCooldownSec,
-          nextRedCrestDir: input.redCrestDir,
           speedMultiplier: t.pigeon.redCrestLungeSpeed / t.pigeon.redCrestMaxSpeed,
-          startedCharge: false,
         };
       }
       return {
+        ...baseIdle,
         moveDir: 0,
         intent: 'charge',
         nextSurgeReactElapsedSec: 0,
         nextRedCrestState: 'charging',
         nextRedCrestTimerSec: rem,
-        nextRedCrestCooldownSec: nextCooldown,
-        nextRedCrestDir: input.redCrestDir,
         speedMultiplier: 0,
-        startedCharge: false,
       };
     }
 
@@ -123,69 +139,76 @@ export function decideAiMove(input: AiDecisionInput, t: Tuning = tuning): AiDeci
       if (rem <= 0) {
         const hitPlayer = Math.abs(input.playerX - input.aiX) <= 44;
         return {
+          ...baseIdle,
           moveDir: 0,
           intent: hitPlayer ? 'contest' : 'stunned',
           nextSurgeReactElapsedSec: 0,
           nextRedCrestState: hitPlayer ? 'idle' : 'whiff_stun',
           nextRedCrestTimerSec: hitPlayer ? 0 : t.pigeon.redCrestWhiffStunSec,
           nextRedCrestCooldownSec: t.pigeon.redCrestCooldownSec,
-          nextRedCrestDir: input.redCrestDir,
-          speedMultiplier: 1,
-          startedCharge: false,
         };
       }
       return {
+        ...baseIdle,
         moveDir: input.redCrestDir,
         intent: 'lunge',
         nextSurgeReactElapsedSec: 0,
         nextRedCrestState: 'lunging',
         nextRedCrestTimerSec: rem,
-        nextRedCrestCooldownSec: nextCooldown,
-        nextRedCrestDir: input.redCrestDir,
         speedMultiplier: t.pigeon.redCrestLungeSpeed / t.pigeon.redCrestMaxSpeed,
-        startedCharge: false,
       };
     }
   }
 
-  const dangerNozzle = findNearestNozzleByPhases(input.aiX, input.nozzles, ['SURGE_WARN']);
-  if (dangerNozzle && Math.abs(input.aiX - dangerNozzle.x) <= t.fountain.coreRadiusPx + 16) {
-    const nextReact = input.surgeReactElapsedSec + dt;
-    if (nextReact >= t.pigeon.aiReactionDelaySec) {
-      const fleeDir: -1 | 1 =
-        input.aiX < dangerNozzle.x
-          ? -1
-          : input.aiX > dangerNozzle.x
-            ? 1
-            : dangerNozzle.x >= 195
-              ? -1
-              : 1;
+  // T3: Avoid standing on nozzle adjacent to player's PLUGGED nozzle
+  if (playerPlugSlot !== null) {
+    const pluggedNozzle = input.nozzles[playerPlugSlot];
+    const dangerAdj = input.nozzles.find(
+      (n) => Math.abs(n.slotIndex - playerPlugSlot) === 1 && Math.abs(input.aiX - n.x) <= t.fountain.coreRadiusPx + 14,
+    );
+    if (dangerAdj && pluggedNozzle) {
+      const fleeDir: -1 | 1 = dangerAdj.x >= pluggedNozzle.x ? 1 : -1;
       return {
+        ...baseIdle,
         moveDir: fleeDir,
         intent: 'flee',
-        nextSurgeReactElapsedSec: nextReact,
-        nextRedCrestState: 'idle',
-        nextRedCrestTimerSec: 0,
-        nextRedCrestCooldownSec: nextCooldown,
-        nextRedCrestDir: input.redCrestDir,
-        speedMultiplier: 1,
-        startedCharge: false,
+        nextSurgeReactElapsedSec: 0,
       };
     }
-    const dx = dangerNozzle.x - input.aiX;
-    return {
-      moveDir: Math.abs(dx) > 6 ? (dx > 0 ? 1 : -1) : 0,
-      intent: 'contest',
-      nextSurgeReactElapsedSec: nextReact,
-      nextRedCrestState: 'idle',
-      nextRedCrestTimerSec: 0,
-      nextRedCrestCooldownSec: nextCooldown,
-      nextRedCrestDir: input.redCrestDir,
-      speedMultiplier: 1,
-      startedCharge: false,
-    };
   }
 
+  // T2+: Flee SURGE_WARN after tier reaction delay
+  if (tierSpec.fleeSurgeWarn) {
+    const dangerNozzle = findBestNozzle(input, ['SURGE_WARN'], null, false);
+    if (dangerNozzle && Math.abs(input.aiX - dangerNozzle.x) <= t.fountain.coreRadiusPx + 16) {
+      const nextReact = input.surgeReactElapsedSec + dt;
+      if (nextReact >= tierSpec.reactionDelaySec) {
+        const fleeDir: -1 | 1 =
+          input.aiX < dangerNozzle.x
+            ? -1
+            : input.aiX > dangerNozzle.x
+              ? 1
+              : dangerNozzle.x >= 195
+                ? -1
+                : 1;
+        return {
+          ...baseIdle,
+          moveDir: fleeDir,
+          intent: 'flee',
+          nextSurgeReactElapsedSec: nextReact,
+        };
+      }
+      const dx = dangerNozzle.x - input.aiX;
+      return {
+        ...baseIdle,
+        moveDir: Math.abs(dx) > 6 ? (dx > 0 ? 1 : -1) : 0,
+        intent: 'contest',
+        nextSurgeReactElapsedSec: nextReact,
+      };
+    }
+  }
+
+  // Red-crest charge trigger
   if (
     input.archetype === 'red_crest' &&
     nextCooldown <= 0 &&
@@ -194,6 +217,7 @@ export function decideAiMove(input: AiDecisionInput, t: Tuning = tuning): AiDeci
   ) {
     const dir: -1 | 1 = input.playerX >= input.aiX ? 1 : -1;
     return {
+      ...baseIdle,
       moveDir: 0,
       intent: 'charge',
       nextSurgeReactElapsedSec: 0,
@@ -206,67 +230,88 @@ export function decideAiMove(input: AiDecisionInput, t: Tuning = tuning): AiDeci
     };
   }
 
-  const targetNozzle = findNearestNozzleByPhases(input.aiX, input.nozzles, [
-    'ACTIVE',
-    'WARNING',
-  ]);
+  // T3: Plug an IDLE/WARNING nozzle if player is sitting on an adjacent ACTIVE nozzle
+  if (tierSpec.canPlug && plugCd <= 0) {
+    const playerActive = input.nozzles.find(
+      (n) => n.phase === 'ACTIVE' && Math.abs(input.playerX - n.x) <= t.fountain.coreRadiusPx,
+    );
+    if (playerActive) {
+      const plugCandidate = input.nozzles.find(
+        (n) =>
+          (n.phase === 'IDLE' || n.phase === 'WARNING') &&
+          Math.abs(n.slotIndex - playerActive.slotIndex) === 1,
+      );
+      if (plugCandidate) {
+        const dx = plugCandidate.x - input.aiX;
+        if (Math.abs(dx) <= t.plug.coreRadiusPx - 4) {
+          return {
+            ...baseIdle,
+            moveDir: 0,
+            intent: 'plug',
+            nextSurgeReactElapsedSec: 0,
+            shouldJumpToPlug: true,
+          };
+        }
+        return {
+          ...baseIdle,
+          moveDir: dx > 0 ? 1 : -1,
+          intent: 'plug',
+          nextSurgeReactElapsedSec: 0,
+        };
+      }
+    }
+  }
+
+  // Chase ACTIVE (or WARNING for T2+)
+  const seekPhases: FountainPhase[] = tierSpec.seekWarning ? ['ACTIVE', 'WARNING'] : ['ACTIVE'];
+  const targetNozzle =
+    findBestNozzle(input, seekPhases, playerPlugSlot, input.archetype === 'sparrow') ??
+    findBestNozzle(input, seekPhases, null, false);
+
   if (targetNozzle) {
     const flockOffset = input.archetype === 'sparrow' ? (input.birdIndex % 2 === 0 ? -10 : 10) : 0;
     const dxToNozzle = targetNozzle.x + flockOffset - input.aiX;
-    if (Math.abs(dxToNozzle) > 8) {
-      return {
-        moveDir: dxToNozzle > 0 ? 1 : -1,
-        intent: 'chase',
-        nextSurgeReactElapsedSec: 0,
-        nextRedCrestState: 'idle',
-        nextRedCrestTimerSec: 0,
-        nextRedCrestCooldownSec: nextCooldown,
-        nextRedCrestDir: input.redCrestDir,
-        speedMultiplier: 1,
-        startedCharge: false,
-      };
-    }
+    const inCore = Math.abs(input.aiX - targetNozzle.x) <= t.fountain.coreRadiusPx + 6;
+    const playerInSameCore = Math.abs(input.playerX - targetNozzle.x) <= t.fountain.coreRadiusPx + 8;
 
-    const playerNear = Math.abs(input.playerX - targetNozzle.x) < t.fountain.coreRadiusPx + 14;
-    if (playerNear) {
+    if (inCore && playerInSameCore && targetNozzle.phase === 'ACTIVE') {
+      const nextContest = prevContest + dt;
+      const shouldBump = nextContest >= tierSpec.contestBumpThresholdSec && bumpCd <= 0;
       const pushDir: -1 | 1 = input.playerX > input.aiX ? 1 : -1;
       return {
+        ...baseIdle,
         moveDir: pushDir,
         intent: 'contest',
         nextSurgeReactElapsedSec: 0,
-        nextRedCrestState: 'idle',
-        nextRedCrestTimerSec: 0,
-        nextRedCrestCooldownSec: nextCooldown,
-        nextRedCrestDir: input.redCrestDir,
-        speedMultiplier: 1,
-        startedCharge: false,
+        nextContestTimerSec: shouldBump ? 0 : nextContest,
+        shouldBump,
+      };
+    }
+
+    if (Math.abs(dxToNozzle) > 8) {
+      return {
+        ...baseIdle,
+        moveDir: dxToNozzle > 0 ? 1 : -1,
+        intent: 'chase',
+        nextSurgeReactElapsedSec: 0,
       };
     }
 
     return {
+      ...baseIdle,
       moveDir: 0,
       intent: 'contest',
       nextSurgeReactElapsedSec: 0,
-      nextRedCrestState: 'idle',
-      nextRedCrestTimerSec: 0,
-      nextRedCrestCooldownSec: nextCooldown,
-      nextRedCrestDir: input.redCrestDir,
-      speedMultiplier: 1,
-      startedCharge: false,
     };
   }
 
+  // Gentle roam during IDLE / SURGE
   const patrolTarget = 195 + Math.sin(input.elapsedSec * 1.4 + input.birdIndex * 1.9) * 60;
   const dx = patrolTarget - input.aiX;
   return {
+    ...baseIdle,
     moveDir: Math.abs(dx) > 10 ? (dx > 0 ? 1 : -1) : 0,
     intent: 'roam',
     nextSurgeReactElapsedSec: 0,
-    nextRedCrestState: 'idle',
-    nextRedCrestTimerSec: 0,
-    nextRedCrestCooldownSec: nextCooldown,
-    nextRedCrestDir: input.redCrestDir,
-    speedMultiplier: 1,
-    startedCharge: false,
   };
 }

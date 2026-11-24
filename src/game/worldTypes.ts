@@ -1,4 +1,4 @@
-import type { AiArchetype, StageConfig, Tuning } from '../config/tuning';
+import type { AiArchetype, AiTier, StageConfig, Tuning } from '../config/tuning';
 import { clamp, type AiIntent, type FountainPhase, type Occupant, type RedCrestPhase } from './rules';
 
 export type PlayerExpression = 'smug' | 'bliss' | 'panic' | 'bump' | 'launched' | 'jump';
@@ -19,10 +19,17 @@ export interface PigeonBody {
 export interface RivalBird extends PigeonBody {
   id: number;
   archetype: AiArchetype;
+  tier: AiTier;
   radius: number;
   stunTimerSec: number;
   respawnTimerSec: number;
   surgeReactElapsedSec: number;
+  contestTimerSec: number;
+  bumpCooldownSec: number;
+  plugCooldownSec: number;
+  plugSlotIndex: number | null;
+  plugHoldSec: number;
+  isJumpingToPlug: boolean;
   intent: AiIntent;
   launchedByFountain: boolean;
   redCrestState: RedCrestPhase;
@@ -147,6 +154,7 @@ export function createRivalBirds(stage: StageConfig, t: Tuning): RivalBird[] {
     return {
       id: idx,
       archetype,
+      tier: stage.aiTiers[idx] ?? 1,
       radius: archetype === 'sparrow' ? t.pigeon.sparrowRadius : t.pigeon.radius,
       x,
       y: t.scene.groundY,
@@ -161,6 +169,12 @@ export function createRivalBirds(stage: StageConfig, t: Tuning): RivalBird[] {
       stunTimerSec: 0,
       respawnTimerSec: 0,
       surgeReactElapsedSec: 0,
+      contestTimerSec: 0,
+      bumpCooldownSec: 0.8 + idx * 0.3,
+      plugCooldownSec: 0,
+      plugSlotIndex: null,
+      plugHoldSec: 0,
+      isJumpingToPlug: false,
       intent: 'roam',
       launchedByFountain: false,
       redCrestState: 'idle',

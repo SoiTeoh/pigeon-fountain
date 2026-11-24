@@ -1,6 +1,7 @@
 import type { StageId } from '../platform/storage';
 
 export type AiArchetype = 'white_pigeon' | 'sparrow' | 'red_crest';
+export type AiTier = 1 | 2 | 3;
 export type PropKind = 'cup_tower' | 'melon_stall' | 'balloon_cart' | 'coffee_rack';
 export type StageThemeId = 'neighborhood' | 'park' | 'commercial' | 'carnival';
 
@@ -38,6 +39,7 @@ export interface StageConfig {
   readonly cornEnabled: boolean;
   readonly propRespawnSec: number | null;
   readonly rivals: readonly AiArchetype[];
+  readonly aiTiers: readonly AiTier[];
   readonly props: readonly StagePropPlacement[];
 }
 
@@ -135,7 +137,8 @@ export const tuning = {
     bumpCooldownSec: 0.65,
     bumpSelfDashSpeed: 280,
     bumpKnockbackSpeed: 395,
-    sparrowKnockbackMult: 1.25,
+    whiteKnockbackMult: 0.7,
+    sparrowKnockbackMult: 1.3,
     bumpReachPx: 70,
     bumpStunSec: 0.60,
     jumpCooldownSec: 0.90,
@@ -192,6 +195,38 @@ export const tuning = {
     bigUltLaunchVy: -480,
     cooldownSec: 3.0,
   },
+  aiTiers: {
+    1: {
+      reactionDelaySec: 0.55,
+      fleeSurgeWarn: false,
+      seekWarning: false,
+      contestBumpThresholdSec: 1.2,
+      bumpCooldownSec: 2.5,
+      bumpKnockbackSpeed: 290,
+      canPlug: false,
+      avoidPlayerPlug: false,
+    },
+    2: {
+      reactionDelaySec: 0.42,
+      fleeSurgeWarn: true,
+      seekWarning: true,
+      contestBumpThresholdSec: 1.2,
+      bumpCooldownSec: 2.5,
+      bumpKnockbackSpeed: 310,
+      canPlug: false,
+      avoidPlayerPlug: false,
+    },
+    3: {
+      reactionDelaySec: 0.32,
+      fleeSurgeWarn: true,
+      seekWarning: true,
+      contestBumpThresholdSec: 1.0,
+      bumpCooldownSec: 2.2,
+      bumpKnockbackSpeed: 330,
+      canPlug: true,
+      avoidPlayerPlug: true,
+    },
+  },
 } as const;
 
 export const STAGES: Record<StageId, StageConfig> = {
@@ -216,6 +251,7 @@ export const STAGES: Record<StageId, StageConfig> = {
     cornEnabled: false,
     propRespawnSec: null,
     rivals: ['white_pigeon'],
+    aiTiers: [1],
     props: [
       {
         id: 's1-l-cup',
@@ -276,6 +312,7 @@ export const STAGES: Record<StageId, StageConfig> = {
     cornEnabled: true,
     propRespawnSec: null,
     rivals: ['white_pigeon', 'sparrow', 'sparrow'],
+    aiTiers: [1, 2, 2],
     props: [
       {
         id: 's2-l-melon',
@@ -336,6 +373,7 @@ export const STAGES: Record<StageId, StageConfig> = {
     cornEnabled: false,
     propRespawnSec: null,
     rivals: ['white_pigeon', 'red_crest'],
+    aiTiers: [2, 3],
     props: [
       {
         id: 's3-l-balloon',
@@ -408,6 +446,7 @@ export const STAGES: Record<StageId, StageConfig> = {
     cornEnabled: true,
     propRespawnSec: null,
     rivals: ['white_pigeon', 'red_crest', 'sparrow', 'sparrow'],
+    aiTiers: [2, 3, 2, 3],
     props: [
       {
         id: 's4-l-melon',
@@ -482,6 +521,7 @@ export const ENDLESS_STAGE: StageConfig = {
   cornEnabled: true,
   propRespawnSec: 8.0,
   rivals: ['white_pigeon', 'red_crest', 'sparrow', 'sparrow'],
+  aiTiers: [2, 3, 2, 3],
   props: [
     {
       id: 'end-l-melon',

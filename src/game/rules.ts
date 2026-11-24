@@ -145,21 +145,19 @@ export function evaluateNozzleOccupant(
   rivalAirbornes: readonly boolean[],
   coreRadiusPx: number,
 ): Occupant {
-  const playerDist = playerAirborne ? Number.POSITIVE_INFINITY : Math.abs(playerX - nozzleX);
-  let bestAiDist = Number.POSITIVE_INFINITY;
+  const playerIn = !playerAirborne && Math.abs(playerX - nozzleX) <= coreRadiusPx;
+  let aiCount = 0;
   for (let i = 0; i < rivalXs.length; i++) {
     if (rivalAirbornes[i]) continue;
-    const d = Math.abs(rivalXs[i] - nozzleX);
-    if (d < bestAiDist) bestAiDist = d;
+    if (Math.abs(rivalXs[i] - nozzleX) <= coreRadiusPx) {
+      aiCount += 1;
+    }
   }
 
-  const playerIn = playerDist <= coreRadiusPx;
-  const aiIn = bestAiDist <= coreRadiusPx;
-
-  if (!playerIn && !aiIn) return 'none';
-  if (playerIn && !aiIn) return 'player';
-  if (!playerIn && aiIn) return 'ai';
-  return playerDist <= bestAiDist ? 'player' : 'ai';
+  const total = (playerIn ? 1 : 0) + aiCount;
+  if (total === 0) return 'none';
+  if (total >= 2) return 'contested';
+  return playerIn ? 'player' : 'ai';
 }
 
 function randomRange(min: number, max: number, rng: () => number): number {
@@ -202,6 +200,7 @@ export function stepMatchState(
       state: prev,
       occupant: 'none',
       occupiedSlotIndex: null,
+      contestedSlots: [],
       combo: computeComboMultiplier(prev.playerHoldSec, t),
       enteredPhases: [],
       playerHitBySurgeSlot: null,
@@ -444,11 +443,12 @@ export function stepMatchState(
     }
   }
 
-  // Evaluate multi-nozzle occupancy during ACTIVE
+  // Evaluate multi-nozzle occupancy during ACTIVE (contested -> nobody gains!)
   const rivalXs = input.rivals.map((r) => r.x);
   const rivalAirbornes = input.rivals.map((r) => r.airborne || Boolean(r.stunned));
   let occupant: Occupant = 'none';
   let occupiedSlotIndex: number | null = null;
+  const contestedSlots: number[] = [];
   let bestPlayerDist = Number.POSITIVE_INFINITY;
   const gainingRivalIds = new Set<number>();
 
@@ -462,7 +462,10 @@ export function stepMatchState(
       rivalAirbornes,
       t.fountain.coreRadiusPx,
     );
-    if (occ === 'player') {
+    if (occ === 'contested') {
+      contestedSlots.push(nozzle.slotIndex);
+      if (occupant === 'none') occupant = 'contested';
+    } else if (occ === 'player') {
       const dist = Math.abs(input.playerX - nozzle.x);
       if (dist < bestPlayerDist) {
         bestPlayerDist = dist;
@@ -470,7 +473,7 @@ export function stepMatchState(
         occupiedSlotIndex = nozzle.slotIndex;
       }
     } else if (occ === 'ai') {
-      if (occupant === 'none') occupant = 'ai';
+      if (occupant === 'none' || occupant === 'contested') occupant = 'ai';
       for (const rival of input.rivals) {
         if (
           !rival.airborne &&
@@ -553,6 +556,7 @@ export function stepMatchState(
     },
     occupant,
     occupiedSlotIndex,
+    contestedSlots,
     combo,
     enteredPhases,
     playerHitBySurgeSlot,

@@ -1,4 +1,5 @@
 import type { Tuning } from '../config/tuning';
+import { STRINGS_ZH } from '../content/strings.zh';
 import type { FountainSlotState } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
 import { roundRect, THEME_PALETTES } from './shared';
@@ -302,6 +303,7 @@ export function drawSingleFountainJet(
   animTimeSec: number,
   plugRatio = 0,
   adjacentPlugRatio = 0,
+  contested = false,
 ): void {
   const groundY = t.scene.groundY;
   const nx = n.x;
@@ -391,6 +393,22 @@ export function drawSingleFountainJet(
     ctx.lineTo(nx + 5, groundY - 2);
     ctx.closePath();
     ctx.fill();
+
+    if (contested) {
+      const jx = Math.sin(animTimeSec * 48) * 3;
+      const jy = Math.cos(animTimeSec * 38) * 2;
+      ctx.save();
+      ctx.translate(topX + jx, topY - 18 + jy);
+      ctx.font = '900 22px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.strokeStyle = '#2B2B3A';
+      ctx.lineWidth = 5;
+      ctx.strokeText(STRINGS_ZH.hud.contested, 0, 0);
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(STRINGS_ZH.hud.contested, 0, 0);
+      ctx.restore();
+    }
     return;
   }
 

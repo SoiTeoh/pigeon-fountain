@@ -174,13 +174,21 @@ export class PigeonFountainWorld {
       }
     }
 
-    const redCrestCharged = stepRivalsMovement(
+    const aiMoveRes = stepRivalsMovement(
       this.rivals,
-      this.player.x,
+      this.player,
       this.match,
+      this.plug.activeSlotIndex,
+      this.particles,
+      this.floats,
+      this.fxRng,
       dtSec,
       this.t,
     );
+    const redCrestCharged = aiMoveRes.redCrestCharged;
+    if (aiMoveRes.rivalBumpedPlayer) {
+      this.shakeMag = Math.max(this.shakeMag, 4);
+    }
 
     // Apply lateral water push on ACTIVE nozzles
     for (const nozzle of this.match.nozzles) {
@@ -332,11 +340,43 @@ export class PigeonFountainWorld {
       this.player.x = clamp(this.player.x, 20, this.t.view.width - 20);
     }
 
-    // Clamp grounded rivals or despawn launched rivals
+    // Clamp grounded rivals or handle AI plug-landing / despawn launched rivals
     for (const r of this.rivals) {
       if (r.respawnTimerSec > 0) continue;
       if (!r.airborne) {
         r.x = clamp(r.x, this.t.scene.stageMinX, this.t.scene.stageMaxX);
+      } else if (r.isJumpingToPlug && r.y >= this.t.scene.groundY && r.vy > 0) {
+        r.y = this.t.scene.groundY;
+        r.vy = 0;
+        r.vx = 0;
+        r.airborne = false;
+        r.isJumpingToPlug = false;
+        r.spinRad = 0;
+        const hitSlot = this.match.nozzles.find(
+          (n) => (n.phase === 'IDLE' || n.phase === 'WARNING') && Math.abs(r.x - n.x) <= this.t.plug.coreRadiusPx,
+        );
+        if (hitSlot) {
+          const nextNozzles = this.match.nozzles.map((n) =>
+            Math.abs(n.slotIndex - hitSlot.slotIndex) === 1
+              ? { ...n, phase: 'SURGE' as const, phaseTimerSec: this.t.fountain.surgeDurationSec, lateralDir: 0 as const, lateralStrength: 0 }
+              : n,
+          );
+          this.match = { ...this.match, nozzles: nextNozzles };
+          pushFloatingText(this.floats, this.t, hitSlot.x, this.t.scene.groundY - 68, '对手堵泉偷袭！', '#fb7185', 1.05);
+          if (
+            !this.player.airborne &&
+            nextNozzles.some((n) => n.phase === 'SURGE' && Math.abs(this.player.x - n.x) <= this.t.fountain.coreRadiusPx + 4)
+          ) {
+            this.player.airborne = true;
+            this.player.isJumping = false;
+            this.player.vy = -520;
+            this.match = {
+              ...this.match,
+              playerControl: Math.max(0, this.match.playerControl - this.t.control.surgePenalty),
+              playerSurgeHits: this.match.playerSurgeHits + 1,
+            };
+          }
+        }
       } else if (
         r.y > this.t.view.height + 60 ||
         r.y < -180 ||
@@ -344,6 +384,7 @@ export class PigeonFountainWorld {
         r.x > this.t.view.width + 60
       ) {
         r.airborne = false;
+        r.isJumpingToPlug = false;
         r.launchedByFountain = false;
         r.respawnTimerSec = this.t.pigeon.aiRespawnSec;
       }

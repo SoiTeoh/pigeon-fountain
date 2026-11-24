@@ -82,30 +82,40 @@ export function launchRivalFromFountain(
 
 export function stepRivalsMovement(
   rivals: RivalBird[],
-  playerX: number,
+  player: PigeonBody,
   match: MatchState,
+  playerPlugSlotIndex: number | null,
+  particles: Particle[],
+  floats: FloatingText[],
+  fxRng: () => number,
   dtSec: number,
   t: Tuning,
-): boolean {
+): { redCrestCharged: boolean; rivalBumpedPlayer: boolean } {
   let redCrestCharged = false;
+  let rivalBumpedPlayer = false;
   for (const r of rivals) {
     if (r.respawnTimerSec > 0) {
       r.respawnTimerSec = Math.max(0, r.respawnTimerSec - dtSec);
       if (r.respawnTimerSec === 0) {
-        const fromLeft = playerX > 195;
+        const fromLeft = player.x > 195;
         r.x = fromLeft ? t.scene.stageMinX : t.scene.stageMaxX;
         r.y = t.scene.groundY;
         r.vx = fromLeft ? 150 : -150;
         r.vy = 0;
         r.airborne = false;
         r.launchedByFountain = false;
+        r.isJumpingToPlug = false;
         r.spinRad = 0;
         r.stunTimerSec = 0;
+        r.contestTimerSec = 0;
         r.redCrestState = 'idle';
         r.redCrestTimerSec = 0;
       }
       continue;
     }
+
+    r.bumpCooldownSec = Math.max(0, r.bumpCooldownSec - dtSec);
+    r.plugCooldownSec = Math.max(0, r.plugCooldownSec - dtSec);
 
     if (r.stunTimerSec > 0) {
       r.stunTimerSec = Math.max(0, r.stunTimerSec - dtSec);
@@ -115,12 +125,17 @@ export function stepRivalsMovement(
       const decision = decideAiMove(
         {
           archetype: r.archetype,
+          tier: r.tier,
           birdIndex: r.id,
           aiX: r.x,
-          playerX,
+          playerX: player.x,
           nozzles: match.nozzles,
           stunTimerSec: r.stunTimerSec,
           surgeReactElapsedSec: r.surgeReactElapsedSec,
+          contestTimerSec: r.contestTimerSec,
+          bumpCooldownSec: r.bumpCooldownSec,
+          plugCooldownSec: r.plugCooldownSec,
+          playerPlugSlotIndex,
           redCrestState: r.redCrestState,
           redCrestTimerSec: r.redCrestTimerSec,
           redCrestCooldownSec: r.redCrestCooldownSec,
@@ -132,12 +147,41 @@ export function stepRivalsMovement(
       );
       r.intent = decision.intent;
       r.surgeReactElapsedSec = decision.nextSurgeReactElapsedSec;
+      r.contestTimerSec = decision.nextContestTimerSec;
       r.redCrestState = decision.nextRedCrestState;
       r.redCrestTimerSec = decision.nextRedCrestTimerSec;
       r.redCrestCooldownSec = decision.nextRedCrestCooldownSec;
       r.redCrestDir = decision.nextRedCrestDir;
       if (decision.startedCharge) {
         redCrestCharged = true;
+      }
+
+      if (decision.shouldBump && r.stunTimerSec <= 0) {
+        const tierSpec = t.aiTiers[r.tier];
+        r.bumpCooldownSec = tierSpec.bumpCooldownSec;
+        const dir: -1 | 1 = player.x >= r.x ? 1 : -1;
+        r.facing = dir;
+        r.vx = dir * 210;
+        r.squashX = 1.28;
+        r.squashY = 0.82;
+        if (!player.airborne && Math.abs(player.x - r.x) <= t.pigeon.bumpReachPx) {
+          rivalBumpedPlayer = true;
+          player.vx = dir * tierSpec.bumpKnockbackSpeed;
+          player.squashX = 0.78;
+          player.squashY = 1.22;
+          spawnParticleBurst(particles, fxRng, player.x, t.scene.groundY - 22, 6, 'feather_dark', '#334155', 60, 150);
+          pushFloatingText(floats, t, player.x, t.scene.groundY - 64, '被顶开啦！', '#fb7185', 1.0);
+        }
+      }
+
+      if (decision.shouldJumpToPlug && r.stunTimerSec <= 0) {
+        r.airborne = true;
+        r.isJumpingToPlug = true;
+        r.vy = t.pigeon.jumpSpeed * 0.82;
+        r.vx = 0;
+        r.plugCooldownSec = t.plug.cooldownSec;
+        r.squashX = 0.84;
+        r.squashY = 1.22;
       }
 
       const baseMax =
@@ -149,7 +193,7 @@ export function stepRivalsMovement(
 
       if (r.stunTimerSec > 0) {
         r.vx -= r.vx * Math.min(1, 3.6 * dtSec);
-      } else if (decision.moveDir !== 0) {
+      } else if (!r.airborne && decision.moveDir !== 0) {
         r.facing = decision.moveDir;
         if (r.redCrestState === 'lunging') {
           r.vx = decision.moveDir * t.pigeon.redCrestLungeSpeed;
@@ -158,15 +202,17 @@ export function stepRivalsMovement(
           r.vx = clamp(r.vx, -baseMax * decision.speedMultiplier, baseMax * decision.speedMultiplier);
         }
         r.waddlePhase += dtSec * (r.archetype === 'sparrow' ? 18 : 12);
-      } else {
+      } else if (!r.airborne) {
         r.vx -= r.vx * Math.min(1, t.pigeon.groundDrag * dtSec);
       }
     } else {
       r.vy += t.pigeon.gravity * dtSec;
-      r.spinRad -= 15 * dtSec;
+      if (!r.isJumpingToPlug) {
+        r.spinRad -= 15 * dtSec;
+      }
     }
   }
-  return redCrestCharged;
+  return { redCrestCharged, rivalBumpedPlayer };
 }
 
 export function resolveRivalInteractions(
@@ -341,7 +387,12 @@ export function performPlayerBump(
 
   if (targets.length > 0) {
     for (const r of targets) {
-      const knockMult = r.archetype === 'sparrow' ? t.pigeon.sparrowKnockbackMult : 1;
+      const knockMult =
+        r.archetype === 'sparrow'
+          ? t.pigeon.sparrowKnockbackMult
+          : r.archetype === 'white_pigeon'
+            ? t.pigeon.whiteKnockbackMult
+            : 1;
       const hitDir = r.x >= player.x - 10 ? dashDir : (-dashDir as -1 | 1);
       r.vx = hitDir * t.pigeon.bumpKnockbackSpeed * knockMult;
       r.stunTimerSec = t.pigeon.bumpStunSec;

@@ -52,13 +52,28 @@ describe('evaluateNozzleOccupant', () => {
     ).toBe('ai');
   });
 
-  it('awards occupant to whichever bird is closer to nozzle center', () => {
+  it('returns contested when two or more birds share the nozzle core, and nobody gains control', () => {
     expect(
       evaluateNozzleOccupant(nozzleX + 5, [nozzleX - 18, nozzleX + 22], nozzleX, false, [false, false], r),
-    ).toBe('player');
+    ).toBe('contested');
     expect(
       evaluateNozzleOccupant(nozzleX + 20, [nozzleX - 4, nozzleX + 25], nozzleX, false, [false, false], r),
-    ).toBe('ai');
+    ).toBe('contested');
+
+    const base = createInitialMatchState('stage', 1, tuning);
+    const nozzles = base.nozzles.map((n, i) =>
+      i === 1 ? { ...n, phase: 'ACTIVE' as const, phaseTimerSec: 5.0 } : n,
+    );
+    const res = stepMatchState(
+      { ...base, nozzles },
+      { dtSec: 1.0, playerX: 195, playerAirborne: false, rivals: [{ id: 0, x: 205, airborne: false }] },
+      tuning,
+      () => 0.5,
+    );
+    expect(res.occupant).toBe('contested');
+    expect(res.contestedSlots).toEqual([1]);
+    expect(res.state.playerControl).toBe(0);
+    expect(res.state.rivalControls[0].control).toBe(0);
   });
 
   it('ignores airborne birds', () => {
@@ -457,12 +472,13 @@ describe('decideAiMove & archetypes', () => {
     const late = decideAiMove(
       {
         archetype: 'white_pigeon',
+        tier: 2,
         birdIndex: 0,
         aiX: 205,
         playerX: 130,
         nozzles,
         stunTimerSec: 0,
-        surgeReactElapsedSec: tuning.pigeon.aiReactionDelaySec,
+        surgeReactElapsedSec: tuning.aiTiers[2].reactionDelaySec,
         redCrestState: 'idle',
         redCrestTimerSec: 0,
         redCrestCooldownSec: 0,
@@ -473,6 +489,89 @@ describe('decideAiMove & archetypes', () => {
     );
     expect(late.intent).toBe('flee');
     expect(late.moveDir).toBe(1);
+  });
+
+  it('implements T1 contest-bump (>1.2s), T3 plugging & avoiding player plug, and weight knockback multipliers', () => {
+    const activeNozzles = makeNozzles('ACTIVE');
+    const t1Bump = decideAiMove(
+      {
+        archetype: 'white_pigeon',
+        tier: 1,
+        birdIndex: 0,
+        aiX: 190,
+        playerX: 195,
+        nozzles: activeNozzles,
+        stunTimerSec: 0,
+        surgeReactElapsedSec: 0,
+        contestTimerSec: 1.25,
+        bumpCooldownSec: 0,
+        redCrestState: 'idle',
+        redCrestTimerSec: 0,
+        redCrestCooldownSec: 0,
+        redCrestDir: 1,
+        elapsedSec: 5,
+      },
+      tuning,
+    );
+    expect(t1Bump.shouldBump).toBe(true);
+
+    // T3 avoids standing next to player's PLUGGED slot 1
+    const plugNozzles = makeNozzles('IDLE').map((n, i) =>
+      i === 1 ? { ...n, phase: 'PLUGGED' as const } : n,
+    );
+    const t3Avoid = decideAiMove(
+      {
+        archetype: 'white_pigeon',
+        tier: 3,
+        birdIndex: 0,
+        aiX: 285,
+        playerX: 195,
+        nozzles: plugNozzles,
+        stunTimerSec: 0,
+        surgeReactElapsedSec: 0,
+        playerPlugSlotIndex: 1,
+        redCrestState: 'idle',
+        redCrestTimerSec: 0,
+        redCrestCooldownSec: 0,
+        redCrestDir: 1,
+        elapsedSec: 5,
+      },
+      tuning,
+    );
+    expect(t3Avoid.intent).toBe('flee');
+
+    // T3 jumps to plug adjacent IDLE nozzle when player sits on ACTIVE nozzle
+    const t3PlugNozzles = makeNozzles('IDLE').map((n, i) =>
+      i === 1 ? { ...n, phase: 'ACTIVE' as const } : n,
+    );
+    const t3Plug = decideAiMove(
+      {
+        archetype: 'white_pigeon',
+        tier: 3,
+        birdIndex: 0,
+        aiX: 105,
+        playerX: 195,
+        nozzles: t3PlugNozzles,
+        stunTimerSec: 0,
+        surgeReactElapsedSec: 0,
+        plugCooldownSec: 0,
+        redCrestState: 'idle',
+        redCrestTimerSec: 0,
+        redCrestCooldownSec: 0,
+        redCrestDir: 1,
+        elapsedSec: 5,
+      },
+      tuning,
+    );
+    expect(t3Plug.shouldJumpToPlug).toBe(true);
+
+    // Knockback multipliers: white_pigeon (0.7x) vs sparrow (1.3x)
+    const wStage2 = new PigeonFountainWorld('stage', 2, tuning, 123);
+    wStage2.player.x = 160;
+    wStage2.rivals[0].x = 190; // white_pigeon
+    wStage2.rivals[1].x = 195; // sparrow
+    wStage2.step({ moveDir: 0, bumpPressed: true, jumpPressed: false }, tuning.loop.fixedDtMs);
+    expect(Math.abs(wStage2.rivals[0].vx)).toBeLessThan(Math.abs(wStage2.rivals[1].vx));
   });
 
   it('triggers red_crest 0.6s charge -> lunge -> whiff_stun when missing player', () => {

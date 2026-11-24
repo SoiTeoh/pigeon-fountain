@@ -4,7 +4,7 @@ import type { GameMode, StageId } from '../platform/storage';
 export type ScreenMode = 'title' | 'playing' | 'paused' | 'result';
 export type FountainPhase = 'IDLE' | 'WARNING' | 'ACTIVE' | 'SURGE_WARN' | 'SURGE' | 'PLUGGED';
 export type FountainStyle = 'bubble' | 'angled';
-export type Occupant = 'player' | 'ai' | 'none';
+export type Occupant = 'player' | 'ai' | 'contested' | 'none';
 
 export interface FountainSlotState {
   readonly slotIndex: number;
@@ -82,6 +82,7 @@ export interface MatchStepResult {
   readonly state: MatchState;
   readonly occupant: Occupant;
   readonly occupiedSlotIndex: number | null;
+  readonly contestedSlots: readonly number[];
   readonly combo: 1 | 2 | 3;
   readonly enteredPhases: readonly FountainPhase[];
   readonly playerHitBySurgeSlot: number | null;
