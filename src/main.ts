@@ -22,7 +22,7 @@ import {
 } from './platform/storage';
 import { createInitialCameraState, stepCameraState } from './render/camera';
 import { drawGameFrame } from './render/painter';
-import { computeViewportLayout } from './render/shared';
+import { computeViewportLayout, HOME_UI, type HomeSubView } from './render/shared';
 import { SceneManager } from './scenes/manager';
 
 function hitRect(
@@ -97,6 +97,7 @@ async function main(): Promise<void> {
   let logicalHeight: number = tuning.view.height;
   let safeTopPx = 0;
   let camera = createInitialCameraState(activeTuning);
+  let homeSubView: HomeSubView = 'home';
 
   function measureSafeTopPx(): number {
     try {
@@ -193,6 +194,7 @@ async function main(): Promise<void> {
       gameMode = 'stage';
       selectedStageId = 1;
     }
+    homeSubView = 'home';
     syncPreviewWorld();
     sceneManager.transitionTo('title');
   }
@@ -222,36 +224,60 @@ async function main(): Promise<void> {
     const layout = computeViewportLayout(logicalHeight, safeTopPx, activeTuning);
 
     if (sceneManager.mode === 'title') {
-      const ui = tuning.ui.title;
+      if (homeSubView === 'home') {
+        const botPt = { x: pt.x, y: pt.y - layout.bottomOffsetY };
+        if (hitRect(botPt, HOME_UI.ctaBtn)) {
+          sound.playUiClick();
+          startNewGame('stage', selectedStageId);
+          return;
+        }
+        if (hitRect(botPt, HOME_UI.navMapBtn)) {
+          sound.playUiClick();
+          homeSubView = 'map';
+          return;
+        }
+        if (hitRect(botPt, HOME_UI.navEndlessBtn)) {
+          sound.playUiClick();
+          startNewGame('endless', 1);
+          return;
+        }
+        if (hitRect(botPt, HOME_UI.navTutorialBtn)) {
+          sound.playUiClick();
+          startNewGame('tutorial', 1);
+          return;
+        }
+        return;
+      }
+
       const opt = { x: pt.x, y: pt.y - layout.overlayOffsetY };
-      if (hitRect(opt, ui.modeStageBtn)) {
-        gameMode = 'stage';
-        syncPreviewWorld();
-        sound.playUiClick();
-        return;
-      }
-      if (hitRect(opt, ui.modeEndlessBtn)) {
-        gameMode = 'endless';
-        syncPreviewWorld();
-        sound.playUiClick();
-        return;
-      }
-      if (gameMode === 'stage') {
-        const ids: StageId[] = [1, 2, 3, 4];
-        for (let i = 0; i < ids.length; i++) {
-          const sx = ui.stageCardStartX + i * (ui.stageCardW + ui.stageCardGap);
-          const cardRect = { x: sx, y: ui.stageCardY, w: ui.stageCardW, h: ui.stageCardH };
-          if (hitRect(opt, cardRect) && ids[i] <= progress.unlockedStage) {
-            selectedStageId = ids[i];
+      if (homeSubView === 'map') {
+        if (hitRect(opt, HOME_UI.mapBackBtn)) {
+          sound.playUiClick();
+          homeSubView = 'home';
+          return;
+        }
+        for (const node of HOME_UI.mapNodes) {
+          if (hitCircle(opt, node, 8) && node.id <= progress.unlockedStage) {
+            selectedStageId = node.id;
+            gameMode = 'stage';
             syncPreviewWorld();
+            homeSubView = 'prelevel';
             sound.playUiClick();
             return;
           }
         }
+        return;
       }
-      if (hitRect(opt, ui.startBtn)) {
+
+      // prelevel
+      if (hitRect(opt, HOME_UI.preBackBtn)) {
         sound.playUiClick();
-        startNewGame(gameMode, selectedStageId);
+        homeSubView = 'map';
+        return;
+      }
+      if (hitRect(opt, HOME_UI.preStartBtn)) {
+        sound.playUiClick();
+        startNewGame('stage', selectedStageId);
       }
       return;
     }
@@ -480,7 +506,34 @@ async function main(): Promise<void> {
   let lastTimeMs = performance.now();
   let accumulatorMs = 0;
 
+  function stepTitleDemo(dtMs: number): void {
+    if (world.match.finished) {
+      syncPreviewWorld();
+    }
+    const target =
+      world.match.nozzles.find((n) => n.phase === 'ACTIVE') ??
+      world.match.nozzles.find((n) => n.phase === 'WARNING') ??
+      world.match.nozzles[1] ??
+      world.match.nozzles[0];
+    const dx = (target?.x ?? 195) - world.player.x;
+    const nearRival = world.rivals.some(
+      (r) => !r.airborne && r.respawnTimerSec <= 0 && Math.abs(r.x - world.player.x) <= activeTuning.pigeon.bumpReachPx - 8,
+    );
+    world.step(
+      {
+        moveDir: Math.abs(dx) > 6 ? (dx > 0 ? 1 : -1) : 0,
+        bumpPressed: nearRival && world.player.bumpCooldownSec <= 0,
+        jumpPressed: false,
+      },
+      dtMs,
+    );
+  }
+
   function stepSimulation(dtMs: number): void {
+    if (sceneManager.mode === 'title' && homeSubView === 'home') {
+      stepTitleDemo(dtMs);
+      return;
+    }
     if (!shouldAdvanceSimulation(sceneManager.mode)) return;
 
     const dtSec = dtMs / 1000;
@@ -684,6 +737,7 @@ async function main(): Promise<void> {
       world,
       {
         screenMode: sceneManager.mode,
+        homeSubView,
         gameMode,
         selectedStageId,
         progress,

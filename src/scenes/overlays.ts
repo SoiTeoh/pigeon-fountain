@@ -1,13 +1,45 @@
 import { STAGES, type Tuning } from '../config/tuning';
-import { showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
+import { RIVAL_NAMES, showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
 import {
   didPlayerWinRace,
   evaluateStageStars,
   getMaxRivalControl,
 } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
-import type { StageId } from '../platform/storage';
-import { computeViewportLayout, roundRect, type RenderExtra } from '../render/shared';
+import { drawMiniBirdAvatar } from '../render/hud';
+import {
+  COMIC_PALETTE,
+  computeViewportLayout,
+  HOME_UI,
+  roundRect,
+  type RenderExtra,
+} from '../render/shared';
+
+function drawStickerButton(
+  ctx: CanvasRenderingContext2D,
+  rect: { x: number; y: number; w: number; h: number; r: number },
+  fill: string,
+  fg: string,
+  label: string,
+  font = '900 16px "PingFang SC", "Microsoft YaHei", sans-serif',
+): void {
+  ctx.save();
+  ctx.fillStyle = COMIC_PALETTE.outline;
+  roundRect(ctx, rect.x, rect.y + 4, rect.w, rect.h, rect.r);
+  ctx.fill();
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = COMIC_PALETTE.outlineWidth;
+  roundRect(ctx, rect.x, rect.y, rect.w, rect.h, rect.r);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = fg;
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
+  ctx.restore();
+}
 
 export function drawTitleOverlay(
   ctx: CanvasRenderingContext2D,
@@ -20,155 +52,219 @@ export function drawTitleOverlay(
     extra.safeTopPx ?? 0,
     t,
   );
-  const ui = t.ui.title;
+  const sub = extra.homeSubView ?? 'home';
   const stage = STAGES[extra.selectedStageId];
 
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.58)';
-  ctx.fillRect(0, 0, width, layout.logicalHeight);
+  if (sub === 'home') {
+    // Upper half: bold comic sticker Logo over live AI fountain battle (no instruction paragraphs!)
+    ctx.save();
+    ctx.translate(width / 2, 74 + layout.hudOffsetY);
+    ctx.rotate(-0.035);
+    ctx.fillStyle = COMIC_PALETTE.outline;
+    roundRect(ctx, -148, -32, 296, 68, 20);
+    ctx.fill();
+    ctx.fillStyle = COMIC_PALETTE.accentBright;
+    ctx.strokeStyle = COMIC_PALETTE.outline;
+    ctx.lineWidth = 3.5;
+    roundRect(ctx, -152, -36, 296, 68, 20);
+    ctx.fill();
+    ctx.stroke();
 
+    ctx.fillStyle = COMIC_PALETTE.outline;
+    ctx.font = '900 28px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(STRINGS_ZH.title.heading, -4, -1);
+
+    // Cute mini sticker badge
+    drawMiniBirdAvatar(ctx, 118, -2, 16, 'player');
+    ctx.restore();
+
+    // Lower half anchored to bottom: big CTA "开抢！" + 3 bottom icon buttons
+    ctx.save();
+    ctx.translate(0, layout.bottomOffsetY);
+    const pulse = 1 + Math.sin(extra.animTimeSec * 4.5) * 0.025;
+    ctx.save();
+    ctx.translate(HOME_UI.ctaBtn.x + HOME_UI.ctaBtn.w / 2, HOME_UI.ctaBtn.y + HOME_UI.ctaBtn.h / 2);
+    ctx.scale(pulse, pulse);
+    drawStickerButton(
+      ctx,
+      {
+        x: -HOME_UI.ctaBtn.w / 2,
+        y: -HOME_UI.ctaBtn.h / 2,
+        w: HOME_UI.ctaBtn.w,
+        h: HOME_UI.ctaBtn.h,
+        r: HOME_UI.ctaBtn.r,
+      },
+      COMIC_PALETTE.accentMustard,
+      COMIC_PALETTE.outline,
+      STRINGS_ZH.title.ctaPlay,
+      '900 24px "PingFang SC", "Microsoft YaHei", sans-serif',
+    );
+    ctx.restore();
+
+    drawStickerButton(ctx, HOME_UI.navMapBtn, COMIC_PALETTE.surfaceWhite, COMIC_PALETTE.outline, STRINGS_ZH.title.navMap, '800 13.5px sans-serif');
+    drawStickerButton(ctx, HOME_UI.navEndlessBtn, COMIC_PALETTE.fountainBright, COMIC_PALETTE.outline, STRINGS_ZH.title.navEndless, '800 13.5px sans-serif');
+    drawStickerButton(ctx, HOME_UI.navTutorialBtn, '#FEF3C7', COMIC_PALETTE.outline, STRINGS_ZH.title.navTutorial, '800 13.5px sans-serif');
+    ctx.restore();
+    return;
+  }
+
+  // Dimmed backdrop for Map / Pre-level cards
+  ctx.fillStyle = 'rgba(43, 43, 58, 0.56)';
+  ctx.fillRect(0, 0, width, layout.logicalHeight);
   ctx.save();
   ctx.translate(0, layout.overlayOffsetY);
 
-  ctx.fillStyle = '#ffffff';
-  roundRect(ctx, ui.card.x, ui.card.y, ui.card.w, ui.card.h, ui.card.r);
-  ctx.fill();
-
-  ctx.fillStyle = '#0f172a';
-  ctx.font = '900 24px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(STRINGS_ZH.title.heading, width / 2, 92);
-
-  ctx.fillStyle = '#64748b';
-  ctx.font = '600 12px sans-serif';
-  ctx.fillText(STRINGS_ZH.title.subtitle, width / 2, 118);
-
-  // Mode toggle tabs
-  for (const [btn, label, active] of [
-    [ui.modeStageBtn, STRINGS_ZH.title.modeStage, extra.gameMode === 'stage'],
-    [ui.modeEndlessBtn, STRINGS_ZH.title.modeEndless, extra.gameMode === 'endless'],
-  ] as const) {
-    ctx.fillStyle = active ? '#0ea5e9' : '#f1f5f9';
-    roundRect(ctx, btn.x, btn.y, btn.w, btn.h, btn.r);
+  if (sub === 'map') {
+    const card = HOME_UI.mapCard;
+    ctx.fillStyle = COMIC_PALETTE.outline;
+    roundRect(ctx, card.x, card.y + 5, card.w, card.h, card.r);
     ctx.fill();
-    ctx.fillStyle = active ? '#ffffff' : '#475569';
-    ctx.font = '800 13px sans-serif';
+    ctx.fillStyle = COMIC_PALETTE.surfaceWhite;
+    ctx.strokeStyle = COMIC_PALETTE.outline;
+    ctx.lineWidth = COMIC_PALETTE.outlineWidth;
+    roundRect(ctx, card.x, card.y, card.w, card.h, card.r);
+    ctx.fill();
+    ctx.stroke();
+
+    drawStickerButton(ctx, HOME_UI.mapBackBtn, '#F1F5F9', COMIC_PALETTE.outline, STRINGS_ZH.title.back, '800 12px sans-serif');
+
+    ctx.fillStyle = COMIC_PALETTE.outline;
+    ctx.font = '900 21px "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, btn.x + btn.w / 2, btn.y + btn.h / 2);
-  }
+    ctx.fillText(STRINGS_ZH.title.mapHeading, width / 2 + 22, 90);
 
-  if (extra.gameMode === 'stage') {
-    // 4 stage cards
-    const ids: StageId[] = [1, 2, 3, 4];
-    ids.forEach((sid, idx) => {
-      const sx = ui.stageCardStartX + idx * (ui.stageCardW + ui.stageCardGap);
-      const sy = ui.stageCardY;
-      const unlocked = sid <= extra.progress.unlockedStage;
-      const selected = sid === extra.selectedStageId;
-      const stars = extra.progress.stars[sid];
+    // Winding dashed street path connecting Stage 1 -> 4
+    ctx.save();
+    ctx.strokeStyle = COMIC_PALETTE.outline;
+    ctx.lineWidth = 5;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath();
+    HOME_UI.mapNodes.forEach((node, idx) => {
+      if (idx === 0) ctx.moveTo(node.x, node.y);
+      else ctx.lineTo(node.x, node.y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
 
-      ctx.fillStyle = selected ? '#e0f2fe' : unlocked ? '#f8fafc' : '#e2e8f0';
-      roundRect(ctx, sx, sy, ui.stageCardW, ui.stageCardH, 12);
+    for (const node of HOME_UI.mapNodes) {
+      const unlocked = node.id <= extra.progress.unlockedStage;
+      const selected = node.id === extra.selectedStageId;
+      const stars = extra.progress.stars[node.id];
+
+      ctx.save();
+      ctx.fillStyle = COMIC_PALETTE.outline;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y + 4, node.r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = selected ? '#0284c7' : unlocked ? '#cbd5e1' : '#94a3b8';
-      ctx.lineWidth = selected ? 2.5 : 1.5;
+
+      ctx.fillStyle = selected
+        ? COMIC_PALETTE.accentBright
+        : unlocked
+          ? COMIC_PALETTE.fountainBright
+          : '#E2E8F0';
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2);
+      ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = unlocked ? '#0f172a' : '#64748b';
-      ctx.font = '800 12.5px sans-serif';
+      ctx.fillStyle = unlocked ? COMIC_PALETTE.outline : '#64748B';
+      ctx.font = '900 15px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`第 ${sid} 关`, sx + ui.stageCardW / 2, sy + 18);
+      ctx.fillText(unlocked ? `${node.id}` : '🔒', node.x, node.y - 4);
 
-      ctx.font = '600 10px sans-serif';
-      ctx.fillStyle = '#475569';
-      ctx.fillText(
-        STAGES[sid].shortName.replace(/^\d+\.\s*/, ''),
-        sx + ui.stageCardW / 2,
-        sy + 36,
-        ui.stageCardW - 8,
-      );
+      const starStr = unlocked ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '未解锁';
+      ctx.fillStyle = unlocked && stars > 0 ? '#D97706' : '#475569';
+      ctx.font = '800 10px sans-serif';
+      ctx.fillText(starStr, node.x, node.y + 14);
 
-      if (unlocked) {
-        const starStr = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-        ctx.fillStyle = stars > 0 ? '#f59e0b' : '#94a3b8';
-        ctx.font = 'bold 12px sans-serif';
-        ctx.fillText(starStr, sx + ui.stageCardW / 2, sy + 56, ui.stageCardW - 10);
-
-        const best = extra.progress.stageBestScores[sid];
-        ctx.fillStyle = '#64748b';
-        ctx.font = '700 9.5px sans-serif';
-        ctx.fillText(
-          best > 0 ? `最高 ${best}%` : '抢先满 100',
-          sx + ui.stageCardW / 2,
-          sy + 77,
-          ui.stageCardW - 10,
-        );
-      } else {
-        ctx.fillStyle = '#64748b';
-        ctx.font = '700 11.5px sans-serif';
-        ctx.fillText('🔒 未解锁', sx + ui.stageCardW / 2, sy + 64, ui.stageCardW - 8);
-      }
-    });
-
-    // Selected stage info box
-    ctx.fillStyle = '#f8fafc';
-    roundRect(ctx, 38, 308, width - 76, 58, 12);
-    ctx.fill();
-    ctx.fillStyle = '#0f172a';
-    ctx.font = '800 13px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(`${stage.title}（${stage.durationSec}秒赛跑）`, 50, 328);
-    ctx.fillStyle = '#64748b';
-    ctx.font = '500 11.5px sans-serif';
-    ctx.fillText(stage.subtitle, 50, 348);
-  } else {
-    // Endless info box
-    ctx.fillStyle = '#fef3c7';
-    roundRect(ctx, 38, 204, width - 76, 152, 16);
-    ctx.fill();
-    ctx.fillStyle = '#92400e';
-    ctx.font = '900 18px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('60s 无尽广场大乱斗', width / 2, 240);
-    ctx.fillStyle = '#78350f';
-    ctx.font = '600 12px sans-serif';
-    ctx.fillText('5 喷口狂飙 · 道具摧毁 8 秒自动补新', width / 2, 268);
-    ctx.fillText('白胖鸽 + 麻雀群 + 红冠鸽同台混战', width / 2, 290);
-    ctx.fillStyle = '#d97706';
-    ctx.font = '800 15px sans-serif';
-    ctx.fillText(`本机最高纪录：${extra.progress.endlessBestScore} 分`, width / 2, 328);
+      ctx.fillStyle = COMIC_PALETTE.outline;
+      ctx.font = '800 12px sans-serif';
+      ctx.fillText(STAGES[node.id].shortName, node.x, node.y + node.r + 16);
+      ctx.restore();
+    }
+    ctx.restore();
+    return;
   }
 
-  // Controls guide
-  const tips = showKeyboardHints(extra.lastInputMethod)
-    ? STRINGS_ZH.title.tipsKeyboard
-    : STRINGS_ZH.title.tipsTouch;
-  tips.forEach(([title, desc], idx) => {
-    const ty = 376 + idx * 38;
-    ctx.fillStyle = '#f1f5f9';
-    roundRect(ctx, 38, ty, width - 76, 32, 8);
-    ctx.fill();
-    ctx.fillStyle = '#0f172a';
-    ctx.font = '800 10.5px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(title, 46, ty + 16);
-    ctx.fillStyle = '#475569';
-    ctx.font = '500 10px sans-serif';
-    ctx.fillText(desc, 138, ty + 16, width - 182);
+  // Pre-level card ('prelevel'): stage banner + rival avatars + bad-deeds goal checklist + CTA
+  const card = HOME_UI.preCard;
+  ctx.fillStyle = COMIC_PALETTE.outline;
+  roundRect(ctx, card.x, card.y + 5, card.w, card.h, card.r);
+  ctx.fill();
+  ctx.fillStyle = COMIC_PALETTE.surfaceWhite;
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = COMIC_PALETTE.outlineWidth;
+  roundRect(ctx, card.x, card.y, card.w, card.h, card.r);
+  ctx.fill();
+  ctx.stroke();
+
+  drawStickerButton(ctx, HOME_UI.preBackBtn, '#F1F5F9', COMIC_PALETTE.outline, STRINGS_ZH.title.back, '800 12px sans-serif');
+
+  ctx.fillStyle = COMIC_PALETTE.outline;
+  ctx.font = '900 19px "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(stage.title, width / 2, 166, card.w - 32);
+
+  // Rivals showcase box
+  ctx.fillStyle = '#FFF6EB';
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = 2.5;
+  roundRect(ctx, 44, 196, width - 88, 94, 14);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#64748B';
+  ctx.font = '800 11px sans-serif';
+  ctx.fillText(STRINGS_ZH.title.prelevelRivals, width / 2, 214);
+
+  const rivalCount = stage.rivals.length;
+  stage.rivals.forEach((rk, i) => {
+    const rx = width / 2 + (i - (rivalCount - 1) / 2) * 66;
+    drawMiniBirdAvatar(ctx, rx, 248, 16, rk);
+    ctx.fillStyle = COMIC_PALETTE.outline;
+    ctx.font = '800 11px sans-serif';
+    ctx.fillText(RIVAL_NAMES[rk], rx, 274);
   });
 
-  // Start button
-  ctx.fillStyle = '#0ea5e9';
-  roundRect(ctx, ui.startBtn.x, ui.startBtn.y, ui.startBtn.w, ui.startBtn.h, ui.startBtn.r);
+  // Bad-deeds star checklist
+  ctx.fillStyle = '#F8FAFC';
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = 2.5;
+  roundRect(ctx, 44, 304, width - 88, 142, 14);
   ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '900 18px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(
-    extra.gameMode === 'stage' ? `开始第 ${extra.selectedStageId} 关！` : '进入无尽大乱斗！',
-    ui.startBtn.x + ui.startBtn.w / 2,
-    ui.startBtn.y + ui.startBtn.h / 2 + 1,
+  ctx.stroke();
+
+  ctx.fillStyle = '#64748B';
+  ctx.font = '800 11px sans-serif';
+  ctx.fillText(STRINGS_ZH.title.prelevelGoals, width / 2, 322);
+
+  const goals = [
+    '★  抢先霸占到 100 获胜',
+    `★★ 中暴喷不超过 1 次（高分 ${stage.starThresholds[1]}+）`,
+    `★★★ 全程压制对手（极速制霸）`,
+  ];
+  goals.forEach((g, idx) => {
+    ctx.fillStyle = COMIC_PALETTE.outline;
+    ctx.font = '800 12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(g, 60, 352 + idx * 30, card.w - 64);
+  });
+
+  drawStickerButton(
+    ctx,
+    HOME_UI.preStartBtn,
+    COMIC_PALETTE.accentMustard,
+    COMIC_PALETTE.outline,
+    STRINGS_ZH.title.ctaPlay,
+    '900 22px "PingFang SC", "Microsoft YaHei", sans-serif',
   );
   ctx.restore();
 }
@@ -195,11 +291,17 @@ export function drawPauseOverlay(
   ctx.save();
   ctx.translate(0, layout.overlayOffsetY);
 
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = COMIC_PALETTE.outline;
+  roundRect(ctx, ui.card.x, ui.card.y + 5, ui.card.w, ui.card.h, ui.card.r);
+  ctx.fill();
+  ctx.fillStyle = COMIC_PALETTE.surfaceWhite;
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = COMIC_PALETTE.outlineWidth;
   roundRect(ctx, ui.card.x, ui.card.y, ui.card.w, ui.card.h, ui.card.r);
   ctx.fill();
+  ctx.stroke();
 
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = COMIC_PALETTE.outline;
   ctx.font = '900 22px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -210,17 +312,19 @@ export function drawPauseOverlay(
     : STRINGS_ZH.pause.modeDrag;
 
   for (const [btn, label, bg, fg] of [
-    [ui.resumeBtn, STRINGS_ZH.pause.resume, '#10b981', '#ffffff'],
-    [ui.restartBtn, restartLabel, '#f59e0b', '#0f172a'],
-    [ui.homeBtn, STRINGS_ZH.pause.home, '#e2e8f0', '#334155'],
-    [ui.controlToggleBtn, modeLabel, '#e0f2fe', '#0369a1'],
+    [ui.resumeBtn, STRINGS_ZH.pause.resume, COMIC_PALETTE.accentMustard, COMIC_PALETTE.outline],
+    [ui.restartBtn, restartLabel, COMIC_PALETTE.fountainBright, COMIC_PALETTE.outline],
+    [ui.homeBtn, STRINGS_ZH.pause.home, '#F1F5F9', COMIC_PALETTE.outline],
+    [ui.controlToggleBtn, modeLabel, '#FFF6EB', COMIC_PALETTE.outline],
   ] as const) {
-    ctx.fillStyle = bg;
-    roundRect(ctx, btn.x, btn.y, btn.w, btn.h, btn.r);
-    ctx.fill();
-    ctx.fillStyle = fg;
-    ctx.font = btn === ui.controlToggleBtn ? '800 13.5px sans-serif' : '800 16px sans-serif';
-    ctx.fillText(label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
+    drawStickerButton(
+      ctx,
+      btn,
+      bg,
+      fg,
+      label,
+      btn === ui.controlToggleBtn ? '800 13.5px sans-serif' : '900 16px sans-serif',
+    );
   }
   ctx.restore();
 }

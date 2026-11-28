@@ -150,16 +150,23 @@ export function drawPlazaBackground(
       [250, 86, 24],
     ]) {
       const x = ((cx + cloudShift) % (width + 120)) - 60;
+      const puffs: readonly [number, number, number][] = [
+        [x - 16, cy + 4, r * 0.68],
+        [x + 18, cy + 4, r * 0.72],
+        [x, cy - 2, r * 0.92],
+      ];
+      ctx.fillStyle = COMIC_PALETTE.outline;
+      for (const [px, py, pr] of puffs) {
+        ctx.beginPath();
+        ctx.arc(px, py, pr + 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.fillStyle = COMIC_PALETTE.surfaceWhite;
-      ctx.strokeStyle = COMIC_PALETTE.outline;
-      ctx.lineWidth = 2.6;
-      ctx.beginPath();
-      ctx.arc(x - 16, cy + 4, r * 0.68, Math.PI * 0.5, Math.PI * 1.5);
-      ctx.arc(x, cy - 2, r * 0.92, Math.PI * 1.0, Math.PI * 2.0);
-      ctx.arc(x + 18, cy + 4, r * 0.72, Math.PI * 1.5, Math.PI * 0.5);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      for (const [px, py, pr] of puffs) {
+        ctx.beginPath();
+        ctx.arc(px, py, pr, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
   ctx.restore();

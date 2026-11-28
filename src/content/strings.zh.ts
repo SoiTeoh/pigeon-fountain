@@ -17,8 +17,16 @@ export function formatPluggedRival(archetype: AiArchetype): string {
 
 export const STRINGS_ZH = {
   title: {
-    heading: '坏鸽子抢喷泉 V2.0',
+    heading: '坏鸽子抢喷泉',
     subtitle: '一屁股坐住，谁也别想抢',
+    ctaPlay: '开抢！',
+    navMap: '🗺 关卡',
+    navEndless: '⚡ 无尽',
+    navTutorial: '🎓 教学',
+    mapHeading: '广场抢泉地图',
+    back: '← 返回',
+    prelevelRivals: '本关抢泉对手',
+    prelevelGoals: '坏事清单',
     modeStage: '闯关霸占 (4关)',
     modeEndless: '无尽大乱斗',
     tipsTouch: [

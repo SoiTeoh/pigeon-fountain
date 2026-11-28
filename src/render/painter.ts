@@ -259,7 +259,9 @@ export function drawGameFrame(
   drawParticlesShockwavesAndFloats(ctx, world);
   ctx.restore();
 
-  drawHudAndControls(ctx, world, extra, t);
+  if (extra.screenMode !== 'title') {
+    drawHudAndControls(ctx, world, extra, t);
+  }
 
   if (extra.debug) {
     drawDebugOverlay(ctx, world, t);

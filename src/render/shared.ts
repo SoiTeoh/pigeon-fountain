@@ -35,8 +35,29 @@ export function computeViewportLayout(
   };
 }
 
+export type HomeSubView = 'home' | 'map' | 'prelevel';
+
+export const HOME_UI = {
+  ctaBtn: { x: 54, y: 486, w: 282, h: 58, r: 18 },
+  navMapBtn: { x: 34, y: 562, w: 98, h: 46, r: 14 },
+  navEndlessBtn: { x: 146, y: 562, w: 98, h: 46, r: 14 },
+  navTutorialBtn: { x: 258, y: 562, w: 98, h: 46, r: 14 },
+  mapCard: { x: 22, y: 56, w: 346, h: 528, r: 22 },
+  mapBackBtn: { x: 36, y: 74, w: 76, h: 32, r: 10 },
+  mapNodes: [
+    { id: 1 as StageId, x: 108, y: 472, r: 34 },
+    { id: 2 as StageId, x: 274, y: 376, r: 34 },
+    { id: 3 as StageId, x: 112, y: 274, r: 34 },
+    { id: 4 as StageId, x: 266, y: 176, r: 36 },
+  ] as const,
+  preCard: { x: 24, y: 92, w: 342, h: 456, r: 22 },
+  preBackBtn: { x: 40, y: 110, w: 86, h: 32, r: 10 },
+  preStartBtn: { x: 54, y: 466, w: 282, h: 56, r: 16 },
+} as const;
+
 export interface RenderExtra {
   readonly screenMode: ScreenMode;
+  readonly homeSubView?: HomeSubView;
   readonly gameMode: GameMode;
   readonly selectedStageId: StageId;
   readonly progress: PlayerProgress;
