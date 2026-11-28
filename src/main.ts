@@ -22,7 +22,12 @@ import {
 } from './platform/storage';
 import { createInitialCameraState, stepCameraState } from './render/camera';
 import { drawGameFrame } from './render/painter';
-import { computeViewportLayout, HOME_UI, type HomeSubView } from './render/shared';
+import {
+  computeViewportLayout,
+  HOME_UI,
+  type HomeSubView,
+  type PolaroidSnapshot,
+} from './render/shared';
 import { SceneManager } from './scenes/manager';
 
 function hitRect(
@@ -77,6 +82,10 @@ async function main(): Promise<void> {
   let heartbeatAcc = 0;
   let slowMoTimerSec = 0;
   let zoomOverrideTimerSec = 0;
+  let resultAnimSec = 0;
+  let worstSnapshot: PolaroidSnapshot | null = null;
+  let pendingSnapPriority = 0;
+  let pendingSnapCaption = '';
   let plugHintText: string | null = null;
   let plugHintTimerSec = 0;
   let plugGuideShownThisMatch = false;
@@ -169,6 +178,10 @@ async function main(): Promise<void> {
     heartbeatAcc = 0;
     slowMoTimerSec = 0;
     zoomOverrideTimerSec = 0;
+    resultAnimSec = 0;
+    worstSnapshot = null;
+    pendingSnapPriority = 0;
+    pendingSnapCaption = '';
     plugHintText = null;
     plugHintTimerSec = 0;
     plugGuideShownThisMatch = false;
@@ -629,6 +642,25 @@ async function main(): Promise<void> {
     if (events.plugBigUlt) {
       slowMoTimerSec = 0.3;
       zoomOverrideTimerSec = 0.35;
+      if (4 >= (worstSnapshot?.priority ?? 0) && 4 > pendingSnapPriority) {
+        pendingSnapPriority = 4;
+        pendingSnapCaption = STRINGS_ZH.result.snapBigUlt;
+      }
+    } else if (events.aiHitBySurge || events.angledCannonLaunch) {
+      if (3 >= (worstSnapshot?.priority ?? 0) && 3 > pendingSnapPriority) {
+        pendingSnapPriority = 3;
+        pendingSnapCaption = STRINGS_ZH.result.snapSabotage;
+      }
+    } else if (events.playerHitBySurge) {
+      if (2 >= (worstSnapshot?.priority ?? 0) && 2 > pendingSnapPriority) {
+        pendingSnapPriority = 2;
+        pendingSnapCaption = STRINGS_ZH.result.snapLaunched;
+      }
+    } else if (events.occupant === 'player' && world.match.playerControl >= 80) {
+      if (1 > (worstSnapshot?.priority ?? 0) && 1 > pendingSnapPriority) {
+        pendingSnapPriority = 1;
+        pendingSnapCaption = STRINGS_ZH.result.snapWin;
+      }
     }
     if (events.angryWarnTriggered) {
       sound.playFountainAngry();
@@ -669,6 +701,13 @@ async function main(): Promise<void> {
 
     if (world.match.finished) {
       replayRecorder?.finalize(world.getStateHash());
+      resultAnimSec = 0;
+      if (!worstSnapshot && pendingSnapPriority === 0) {
+        pendingSnapPriority = 1;
+        pendingSnapCaption = didPlayerWinRace(world.match)
+          ? STRINGS_ZH.result.snapWin
+          : STRINGS_ZH.result.snapLose;
+      }
       if (!didPlayerWinRace(world.match)) {
         sound.playLoseCloud();
       }
@@ -719,6 +758,8 @@ async function main(): Promise<void> {
 
     if (sceneManager.mode === 'title') {
       animTimeSec += elapsedSec;
+    } else if (sceneManager.mode === 'result') {
+      resultAnimSec += elapsedSec;
     }
 
     camera = stepCameraState(
@@ -754,10 +795,35 @@ async function main(): Promise<void> {
         logicalHeight,
         safeTopPx,
         camera,
+        snapshot: worstSnapshot,
+        resultAnimSec,
       },
       activeTuning,
     );
     ctx.restore();
+
+    if (pendingSnapPriority > (worstSnapshot?.priority ?? 0)) {
+      try {
+        const snapCanvas = document.createElement('canvas');
+        snapCanvas.width = 216;
+        snapCanvas.height = 86;
+        const sctx = snapCanvas.getContext('2d');
+        if (sctx) {
+          const layout = computeViewportLayout(logicalHeight, safeTopPx, activeTuning);
+          const cropY = Math.max(0, (tuning.scene.groundY - 148 + layout.worldBaselineShiftY) * dpr);
+          const cropH = Math.min(canvas.height - cropY, 175 * dpr);
+          sctx.drawImage(canvas, 0, cropY, canvas.width, cropH, 0, 0, 216, 86);
+          worstSnapshot = {
+            canvas: snapCanvas,
+            caption: pendingSnapCaption,
+            priority: pendingSnapPriority,
+          };
+        }
+      } catch {
+        // Ignore offscreen snapshot errors
+      }
+      pendingSnapPriority = 0;
+    }
 
     window.requestAnimationFrame(frame);
   }

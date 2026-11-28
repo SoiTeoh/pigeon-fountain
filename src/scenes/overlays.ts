@@ -351,18 +351,27 @@ export function drawResultOverlay(
     (match.mode === 'tutorial' && wonRace);
   const maxRivalCtrl = getMaxRivalControl(match);
 
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.68)';
+  const resultAnimSec = extra.resultAnimSec ?? 2.0;
+
+  ctx.fillStyle = 'rgba(43, 43, 58, 0.68)';
   ctx.fillRect(0, 0, width, layout.logicalHeight);
 
   ctx.save();
   ctx.translate(0, layout.overlayOffsetY);
 
-  ctx.fillStyle = '#ffffff';
+  // Comic sticker card with solid shadow + 3px #2B2B3A border
+  ctx.fillStyle = COMIC_PALETTE.outline;
+  roundRect(ctx, ui.card.x, ui.card.y + 5, ui.card.w, ui.card.h, ui.card.r);
+  ctx.fill();
+  ctx.fillStyle = COMIC_PALETTE.surfaceWhite;
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = COMIC_PALETTE.outlineWidth;
   roundRect(ctx, ui.card.x, ui.card.y, ui.card.w, ui.card.h, ui.card.r);
   ctx.fill();
+  ctx.stroke();
 
-  ctx.fillStyle = '#0f172a';
-  ctx.font = '900 22px sans-serif';
+  ctx.fillStyle = COMIC_PALETTE.outline;
+  ctx.font = '900 20px "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const headline =
@@ -377,80 +386,136 @@ export function drawResultOverlay(
           : match.endReason === 'rival_full'
             ? '被对手抢先满 100！'
             : '时间到，惜败！';
-  ctx.fillText(headline, width / 2, 124);
+  ctx.fillText(headline, width / 2, 108);
 
+  // Sequential popping stars + score/race comparison
   if (match.mode === 'stage' || match.mode === 'tutorial') {
     const starCount = match.mode === 'tutorial' ? (wonRace ? 3 : 0) : stars;
-    const starStr = '★'.repeat(starCount) + '☆'.repeat(3 - starCount);
-    ctx.fillStyle = starCount > 0 ? '#f59e0b' : '#94a3b8';
-    ctx.font = 'bold 28px sans-serif';
-    ctx.fillText(starStr, width / 2, 162);
+    for (let i = 0; i < 3; i++) {
+      const sx = width / 2 + (i - 1) * 34;
+      const sy = 136;
+      const revealAt = 0.2 + i * 0.25;
+      const lit = i < starCount && resultAnimSec >= revealAt;
+      const tProg = lit ? Math.min(1, (resultAnimSec - revealAt) / 0.16) : 1;
+      const starScale = lit ? 0.6 + 0.4 * Math.sin(tProg * Math.PI * 0.75) / Math.sin(Math.PI * 0.75) : 1;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.scale(starScale, starScale);
+      ctx.fillStyle = lit ? COMIC_PALETTE.accentMustard : '#CBD5E1';
+      ctx.font = 'bold 26px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(lit ? '★' : '☆', 0, 0);
+      ctx.restore();
+    }
   }
 
-  ctx.fillStyle = match.mode !== 'endless' ? (wonRace ? '#0284c7' : '#ef4444') : '#ea580c';
-  ctx.font = '900 30px sans-serif';
+  ctx.fillStyle = match.mode !== 'endless' ? (wonRace ? '#0284C7' : COMIC_PALETTE.warningTomato) : '#EA580C';
+  ctx.font = '900 24px "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.fillText(
     match.mode !== 'endless'
       ? `我方 ${Math.round(match.playerControl)}% vs ${Math.round(maxRivalCtrl)}%`
       : `${Math.floor(match.score)} 分`,
     width / 2,
-    match.mode !== 'endless' ? 204 : 182,
+    168,
   );
+
+  // Polaroid highlight photo ("本局最坏的一刻")
+  ctx.save();
+  ctx.translate(width / 2, 256);
+  ctx.rotate(-0.032);
+  ctx.fillStyle = COMIC_PALETTE.outline;
+  roundRect(ctx, -118, -61, 236, 128, 10);
+  ctx.fill();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = 2.8;
+  roundRect(ctx, -120, -64, 236, 128, 10);
+  ctx.fill();
+  ctx.stroke();
+
+  if (extra.snapshot?.canvas) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(-110, -56, 216, 86, 6);
+    ctx.clip();
+    ctx.drawImage(extra.snapshot.canvas, -110, -56, 216, 86);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = COMIC_PALETTE.skyApricotTop;
+    roundRect(ctx, -110, -56, 216, 86, 6);
+    ctx.fill();
+    drawMiniBirdAvatar(ctx, -18, -14, 16, 'player');
+    drawMiniBirdAvatar(ctx, 22, -14, 15, match.rivalControls[0]?.archetype ?? 'white_pigeon');
+  }
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = 2;
+  roundRect(ctx, -110, -56, 216, 86, 6);
+  ctx.stroke();
+
+  // Sticker tag on corner of Polaroid
+  ctx.fillStyle = COMIC_PALETTE.accentBright;
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = 2;
+  roundRect(ctx, -114, -64, 132, 20, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = COMIC_PALETTE.outline;
+  ctx.font = '900 10px sans-serif';
+  ctx.fillText(STRINGS_ZH.result.snapBadge, -48, -53);
+
+  // Caption on white bottom strip
+  const cap =
+    extra.snapshot?.caption ??
+    (wonRace ? STRINGS_ZH.result.snapWin : STRINGS_ZH.result.snapLose);
+  ctx.fillStyle = COMIC_PALETTE.outline;
+  ctx.font = '800 11.5px sans-serif';
+  ctx.fillText(cap, -2, 46, 214);
+  ctx.restore();
 
   const rows =
     match.mode !== 'endless'
       ? [
-          ['占领喷泉时长', `${match.soakSec.toFixed(1)} 秒`],
-          ['使坏轰飞对手', `${match.sabotageCount} 次`],
+          ['占泉 / 用时', `${match.soakSec.toFixed(1)}s / ${match.elapsedSec.toFixed(1)}s`],
+          ['堵泉次数 / 坑飞对手', `${match.plugCount} 次 / ${match.sabotageCount} 次`],
           ['被暴喷轰飞', `${match.playerSurgeHits} 次`],
-          ['堵泉次数 / 坑到对手', `${match.plugCount} 次 / ${match.sabotageCount} 次`],
-          ['用时', `${match.elapsedSec.toFixed(1)} 秒`],
         ]
       : [
-          ['占领喷泉时长', `${match.soakSec.toFixed(1)} 秒`],
-          ['使坏轰飞对手', `${match.sabotageCount} 次`],
-          ['道具连锁爆破', `${match.propSmashCount} 次`],
-          ['铁臀墩坐 / 最高连击', `${match.slamCount} 次 / ×${match.maxCombo}`],
+          ['占泉时长 / 连击', `${match.soakSec.toFixed(1)}s / ×${match.maxCombo}`],
+          ['使坏轰飞 / 砸道具', `${match.sabotageCount} 次 / ${match.propSmashCount} 次`],
           ['本局最高纪录', `${Math.max(extra.progress.endlessBestScore, Math.floor(match.score))} 分`],
         ];
   rows.forEach(([label, val], idx) => {
-    const ry = 246 + idx * 32;
-    ctx.fillStyle = '#f8fafc';
-    roundRect(ctx, 48, ry - 13, width - 96, 26, 8);
+    const ry = 338 + idx * 27;
+    ctx.fillStyle = '#F8FAFC';
+    ctx.strokeStyle = '#E2E8F0';
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, 48, ry - 11, width - 96, 23, 7);
     ctx.fill();
+    ctx.stroke();
     ctx.fillStyle = '#475569';
-    ctx.font = '600 12.5px sans-serif';
+    ctx.font = '700 11.5px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(label, 58, ry);
-    ctx.fillStyle = '#0f172a';
-    ctx.font = '800 13px sans-serif';
+    ctx.fillText(label, 56, ry);
+    ctx.fillStyle = COMIC_PALETTE.outline;
+    ctx.font = '800 12px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(val, width - 58, ry);
+    ctx.fillText(val, width - 56, ry);
   });
 
   // Primary button only when there is a next stage; otherwise keep two non-duplicate buttons!
   if (hasNextStage) {
-    ctx.fillStyle = '#0ea5e9';
-    roundRect(
+    drawStickerButton(
       ctx,
-      ui.primaryBtn.x,
-      ui.primaryBtn.y,
-      ui.primaryBtn.w,
-      ui.primaryBtn.h,
-      ui.primaryBtn.r,
-    );
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(
+      ui.primaryBtn,
+      COMIC_PALETTE.fountainBright,
+      COMIC_PALETTE.outline,
       match.mode === 'tutorial'
         ? match.stageId < 3
           ? `进入教学 ${match.stageId + 1} ▶`
           : '进入第 1 关 ▶'
         : `下一关：第 ${match.stageId + 1} 关 ▶`,
-      ui.primaryBtn.x + ui.primaryBtn.w / 2,
-      ui.primaryBtn.y + ui.primaryBtn.h / 2 + 1,
+      '900 16px sans-serif',
     );
   }
 
@@ -461,16 +526,30 @@ export function drawResultOverlay(
     ? STRINGS_ZH.result.replayKey
     : STRINGS_ZH.result.replayTouch;
 
-  for (const [btn, label, bg, fg] of [
-    [leftBtn, replayLabel, hasNextStage ? '#f1f5f9' : '#10b981', hasNextStage ? '#0f172a' : '#ffffff'],
-    [rightBtn, STRINGS_ZH.result.home, '#e2e8f0', '#334155'],
-  ] as const) {
-    ctx.fillStyle = bg;
-    roundRect(ctx, btn.x, btn.y, btn.w, btn.h, btn.r);
-    ctx.fill();
-    ctx.fillStyle = fg;
-    ctx.font = hasNextStage ? '800 14px sans-serif' : '900 15px sans-serif';
-    ctx.fillText(label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
-  }
+  drawStickerButton(
+    ctx,
+    leftBtn,
+    hasNextStage ? '#F1F5F9' : COMIC_PALETTE.accentMustard,
+    COMIC_PALETTE.outline,
+    replayLabel,
+    hasNextStage ? '800 14px sans-serif' : '900 15px sans-serif',
+  );
+  drawStickerButton(
+    ctx,
+    rightBtn,
+    '#E2E8F0',
+    COMIC_PALETTE.outline,
+    STRINGS_ZH.result.home,
+    hasNextStage ? '800 14px sans-serif' : '900 15px sans-serif',
+  );
+
   ctx.restore();
+
+  // Brief Polaroid shutter flash ("咔嚓") at start of result screen
+  if (resultAnimSec < 0.18) {
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 255, 255, ${(1 - resultAnimSec / 0.18) * 0.72})`;
+    ctx.fillRect(0, 0, width, layout.logicalHeight);
+    ctx.restore();
+  }
 }

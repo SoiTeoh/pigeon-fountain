@@ -76,6 +76,12 @@ export const STRINGS_ZH = {
     replayKey: '再来一局 (R)',
     replayTouch: '再来一局',
     home: '返回主页',
+    snapBadge: '📷 咔嚓！最坏的一刻',
+    snapBigUlt: '憋个大招：坏到家了！',
+    snapSabotage: '一屁股把对手轰飞上天！',
+    snapLaunched: '大意了，自己也被喷飞！',
+    snapWin: '稳坐水柱，成功霸占！',
+    snapLose: '差一点就抢回来了！',
   },
 } as const;
 

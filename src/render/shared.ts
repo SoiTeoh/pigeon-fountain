@@ -55,6 +55,12 @@ export const HOME_UI = {
   preStartBtn: { x: 54, y: 466, w: 282, h: 56, r: 16 },
 } as const;
 
+export interface PolaroidSnapshot {
+  readonly canvas: HTMLCanvasElement;
+  readonly caption: string;
+  readonly priority: number;
+}
+
 export interface RenderExtra {
   readonly screenMode: ScreenMode;
   readonly homeSubView?: HomeSubView;
@@ -74,6 +80,8 @@ export interface RenderExtra {
   readonly logicalHeight?: number;
   readonly safeTopPx?: number;
   readonly camera?: CameraView;
+  readonly snapshot?: PolaroidSnapshot | null;
+  readonly resultAnimSec?: number;
 }
 
 export const COMIC_PALETTE = {
