@@ -345,6 +345,22 @@ export function drawPlazaBackground(
     const isTarget = n.phase !== 'IDLE';
     const isSurgeWarn = n.phase === 'SURGE_WARN';
     const shakeX = isSurgeWarn ? Math.sin(animTimeSec * 65) * 3 : 0;
+    const isMoving = world.stage.movingNozzleSlot === n.slotIndex;
+
+    if (isMoving) {
+      // Sweeper-bot base with little wheels under moving nozzle
+      ctx.fillStyle = '#0F172A';
+      ctx.beginPath();
+      ctx.arc(n.x - 10 + shakeX, groundY + 4, 4, 0, Math.PI * 2);
+      ctx.arc(n.x + 10 + shakeX, groundY + 4, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#38BDF8';
+      roundRect(ctx, n.x - 16 + shakeX, groundY - 3, 32, 7, 3);
+      ctx.fill();
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
 
     ctx.fillStyle = isSurgeWarn
       ? COMIC_PALETTE.warningTomato

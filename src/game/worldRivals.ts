@@ -90,6 +90,7 @@ export function stepRivalsMovement(
   fxRng: () => number,
   dtSec: number,
   t: Tuning,
+  gravMult = 1,
 ): { redCrestCharged: boolean; rivalBumpedPlayer: boolean } {
   let redCrestCharged = false;
   let rivalBumpedPlayer = false;
@@ -215,7 +216,7 @@ export function stepRivalsMovement(
         r.vx -= r.vx * Math.min(1, t.pigeon.groundDrag * dtSec);
       }
     } else {
-      r.vy += t.pigeon.gravity * dtSec;
+      r.vy += t.pigeon.gravity * gravMult * dtSec;
       if (!r.isJumpingToPlug) {
         r.spinRad -= 15 * dtSec;
       }
@@ -290,12 +291,13 @@ export function resolveRivalInteractions(
       if (absDx < minSep) {
         const dir = dx >= 0 ? 1 : -1;
         const overlap = minSep - absDx;
+        const isBigWhiteBoss = stage.bossKind === 'big_white' && r.id === 1;
         const playerPushing = player.vx * dir > 30;
         const rivalPushing = r.vx * -dir > 30;
-        const playerShare = playerPushing ? 0.2 : rivalPushing ? 0.32 : 0.4;
+        const playerShare = isBigWhiteBoss ? 0.88 : playerPushing ? 0.2 : rivalPushing ? 0.32 : 0.4;
         const rivalShare = 1 - playerShare;
-        const playerBounceMult = playerPushing ? 0.25 : rivalPushing ? 0.35 : 0.6;
-        const rivalBounceMult = playerPushing ? 1.75 : rivalPushing ? 1.25 : 1.1;
+        const playerBounceMult = isBigWhiteBoss ? 1.45 : playerPushing ? 0.25 : rivalPushing ? 0.35 : 0.6;
+        const rivalBounceMult = isBigWhiteBoss ? 0.15 : playerPushing ? 1.75 : rivalPushing ? 1.25 : 1.1;
 
         player.x -= dir * overlap * playerShare;
         r.x += dir * overlap * rivalShare;
@@ -372,8 +374,15 @@ function applyBumpHitToRivals(
   floats: FloatingText[],
   fxRng: () => number,
   t: Tuning,
+  stage?: StageConfig,
 ): void {
   for (const r of targets) {
+    if (stage?.bossKind === 'big_white' && r.id === 0) {
+      r.squashX = 1.12;
+      r.squashY = 0.9;
+      pushFloatingText(floats, t, r.x, t.scene.groundY - 76, '推不动！去堵泉！', '#fde047', 1.05);
+      continue;
+    }
     const knockMult =
       r.archetype === 'sparrow'
         ? t.pigeon.sparrowKnockbackMult
@@ -403,6 +412,7 @@ export function performPlayerBump(
   floats: FloatingText[],
   fxRng: () => number,
   t: Tuning,
+  stage?: StageConfig,
 ): { bumpedHit: boolean; bumpedWhiff: boolean; shakeMagDelta: number } {
   player.bumpCooldownSec = t.pigeon.bumpCooldownSec;
   player.bumpAnimSec = 0.22;
@@ -434,7 +444,7 @@ export function performPlayerBump(
   player.squashY = 0.8;
 
   if (targets.length > 0) {
-    applyBumpHitToRivals(player, targets, dashDir, particles, floats, fxRng, t);
+    applyBumpHitToRivals(player, targets, dashDir, particles, floats, fxRng, t, stage);
     return { bumpedHit: true, bumpedWhiff: false, shakeMagDelta: 3 };
   }
   return { bumpedHit: false, bumpedWhiff: true, shakeMagDelta: 0 };
@@ -447,6 +457,7 @@ export function applyDashBumpCollision(
   floats: FloatingText[],
   fxRng: () => number,
   t: Tuning,
+  stage?: StageConfig,
 ): boolean {
   const hitRadius = t.pigeon.radius + 26;
   const targets = rivals.filter(
@@ -457,6 +468,6 @@ export function applyDashBumpCollision(
       Math.abs(r.x - player.x) <= hitRadius,
   );
   if (targets.length === 0) return false;
-  applyBumpHitToRivals(player, targets, player.facing, particles, floats, fxRng, t);
+  applyBumpHitToRivals(player, targets, player.facing, particles, floats, fxRng, t, stage);
   return true;
 }

@@ -56,6 +56,9 @@ export const STRINGS_ZH = {
     plugSuccessFirst: '学会堵泉！旁边会炸！',
     contested: '抢！',
     fountainAngry: '喷泉生气了！',
+    photoFlashActive: '📸 网红拍照！涨条 ×2',
+    lowGravityBadge: '🫧 低重力苏打喷泉',
+    bossCantPush: '推不动！去堵泉！',
   },
   tutorial: {
     tut1Drag: '拖动 → 走过去',

@@ -60,6 +60,8 @@ export interface MatchState {
   readonly propSmashCount: number;
   readonly slamCount: number;
   readonly plugCount: number;
+  readonly bigUltCount: number;
+  readonly photoFlashSec?: number;
   readonly nozzles: readonly FountainSlotState[];
   readonly lastOpenedSlot: number;
   readonly directorIdleSec: number;

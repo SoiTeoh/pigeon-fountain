@@ -3,7 +3,7 @@ import { campaignLevelToStageConfig, getCampaignLevel } from '../content/levels/
 import { RIVAL_NAMES, showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
 import {
   didPlayerWinRace,
-  evaluateStageStars,
+  evaluateCampaignStars,
   getMaxRivalControl,
 } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
@@ -372,10 +372,14 @@ export function drawResultOverlay(
   );
   const { match, stage } = world;
   const ui = t.ui.result;
-  const stars = match.mode === 'stage' ? evaluateStageStars(match, stage) : 0;
+  const campIdx = stage.campaignIndex ?? match.stageId;
+  const campLevel = match.mode === 'stage' ? getCampaignLevel(campIdx) : undefined;
+  const { stars, goalResults } =
+    match.mode === 'stage'
+      ? evaluateCampaignStars(match, stage, campLevel?.goalDefs)
+      : { stars: 0 as 0 | 1 | 2 | 3, goalResults: [false, false] as [boolean, boolean] };
   const stageCleared = match.mode === 'stage' && stars >= 1;
   const wonRace = didPlayerWinRace(match);
-  const campIdx = stage.campaignIndex ?? match.stageId;
   const hasNextStage =
     (stageCleared && campIdx < 24) ||
     (match.mode === 'tutorial' && wonRace);
@@ -503,35 +507,71 @@ export function drawResultOverlay(
   ctx.fillText(cap, -2, 46, 214);
   ctx.restore();
 
-  const rows =
-    match.mode !== 'endless'
-      ? [
-          ['占泉 / 用时', `${match.soakSec.toFixed(1)}s / ${match.elapsedSec.toFixed(1)}s`],
-          ['堵泉次数 / 坑飞对手', `${match.plugCount} 次 / ${match.sabotageCount} 次`],
-          ['被暴喷轰飞', `${match.playerSurgeHits} 次`],
-        ]
-      : [
-          ['占泉时长 / 连击', `${match.soakSec.toFixed(1)}s / ×${match.maxCombo}`],
-          ['使坏轰飞 / 砸道具', `${match.sabotageCount} 次 / ${match.propSmashCount} 次`],
-          ['本局最高纪录', `${Math.max(extra.progress.endlessBestScore, Math.floor(match.score))} 分`],
-        ];
-  rows.forEach(([label, val], idx) => {
-    const ry = 338 + idx * 27;
+  const goalDefs = campLevel?.goalDefs;
+  if (match.mode === 'stage' && goalDefs) {
+    // Bad-deeds checklist + compact summary row
+    goalDefs.forEach((g, idx) => {
+      const passed = goalResults[idx];
+      const ry = 335 + idx * 24;
+      ctx.fillStyle = passed ? '#DCFCE7' : '#F8FAFC';
+      ctx.strokeStyle = passed ? '#16A34A' : '#E2E8F0';
+      ctx.lineWidth = 1.6;
+      roundRect(ctx, 48, ry - 10, width - 96, 21, 7);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = passed ? '#15803D' : '#64748B';
+      ctx.font = '800 11.5px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${passed ? '✅' : '⬜'} 坏事 ${idx + 1}：${g.label}`, 56, ry);
+      ctx.textAlign = 'right';
+      ctx.fillText(passed ? '达成！' : '未达成', width - 56, ry);
+    });
+    const sumY = 385;
     ctx.fillStyle = '#F8FAFC';
     ctx.strokeStyle = '#E2E8F0';
     ctx.lineWidth = 1.5;
-    roundRect(ctx, 48, ry - 11, width - 96, 23, 7);
+    roundRect(ctx, 48, sumY - 10, width - 96, 22, 7);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = '#475569';
-    ctx.font = '700 11.5px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(label, 56, ry);
-    ctx.fillStyle = COMIC_PALETTE.outline;
-    ctx.font = '800 12px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(val, width - 56, ry);
-  });
+    ctx.font = '700 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      `占泉 ${match.soakSec.toFixed(1)}s · 堵泉 ${match.plugCount} · 坑飞 ${match.sabotageCount} · 被喷 ${match.playerSurgeHits}`,
+      width / 2,
+      sumY,
+    );
+  } else {
+    const rows =
+      match.mode !== 'endless'
+        ? [
+            ['占泉 / 用时', `${match.soakSec.toFixed(1)}s / ${match.elapsedSec.toFixed(1)}s`],
+            ['堵泉次数 / 坑飞对手', `${match.plugCount} 次 / ${match.sabotageCount} 次`],
+            ['被暴喷轰飞', `${match.playerSurgeHits} 次`],
+          ]
+        : [
+            ['占泉时长 / 连击', `${match.soakSec.toFixed(1)}s / ×${match.maxCombo}`],
+            ['使坏轰飞 / 砸道具', `${match.sabotageCount} 次 / ${match.propSmashCount} 次`],
+            ['本局最高纪录', `${Math.max(extra.progress.endlessBestScore, Math.floor(match.score))} 分`],
+          ];
+    rows.forEach(([label, val], idx) => {
+      const ry = 338 + idx * 27;
+      ctx.fillStyle = '#F8FAFC';
+      ctx.strokeStyle = '#E2E8F0';
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, 48, ry - 11, width - 96, 23, 7);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#475569';
+      ctx.font = '700 11.5px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, 56, ry);
+      ctx.fillStyle = COMIC_PALETTE.outline;
+      ctx.font = '800 12px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(val, width - 56, ry);
+    });
+  }
 
   // Primary button only when there is a next stage; otherwise keep two non-duplicate buttons!
   if (hasNextStage) {

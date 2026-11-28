@@ -14,6 +14,7 @@ import {
   getTutorialLevel,
   tutorialLevelToStageConfig,
 } from '../content/levels/tutorials';
+import type { GoalDef } from '../content/levels/types';
 import { mulberry32 } from '../core/rng';
 import type { GameMode, StageId } from '../platform/storage';
 import type {
@@ -83,6 +84,41 @@ export function evaluateStageStars(
   return 1;
 }
 
+export function checkGoalMet(state: MatchState, goal: GoalDef): boolean {
+  const won = didPlayerWinRace(state);
+  switch (goal.kind) {
+    case 'sabotage':
+      return state.sabotageCount >= goal.threshold;
+    case 'max_surge_hits':
+      return won && state.playerSurgeHits <= goal.threshold;
+    case 'plug_count':
+      return state.plugCount >= goal.threshold;
+    case 'big_ult':
+      return state.bigUltCount >= goal.threshold;
+    case 'fast_win':
+      return won && state.elapsedSec <= goal.threshold;
+    case 'lead_margin':
+      return won && state.playerControl - getMaxRivalControl(state) >= goal.threshold;
+  }
+}
+
+export function evaluateCampaignStars(
+  state: MatchState,
+  stage: StageConfig,
+  goalDefs?: readonly [GoalDef, GoalDef],
+): { stars: 0 | 1 | 2 | 3; goalResults: [boolean, boolean] } {
+  if (!goalDefs) {
+    const legacy = evaluateStageStars(state, stage);
+    return { stars: legacy, goalResults: [legacy >= 2, legacy >= 3] };
+  }
+  const won = didPlayerWinRace(state);
+  const g1 = checkGoalMet(state, goalDefs[0]);
+  const g2 = checkGoalMet(state, goalDefs[1]);
+  if (!won) return { stars: 0, goalResults: [g1, g2] };
+  const stars = (1 + (g1 ? 1 : 0) + (g2 ? 1 : 0)) as 1 | 2 | 3;
+  return { stars, goalResults: [g1, g2] };
+}
+
 export function getStageForMatch(
   mode: GameMode,
   stageId: StageId,
@@ -149,6 +185,8 @@ export function createInitialMatchState(
     propSmashCount: 0,
     slamCount: 0,
     plugCount: 0,
+    bigUltCount: 0,
+    photoFlashSec: 0,
     nozzles: createInitialFountains(stage),
     lastOpenedSlot: Math.floor(stage.nozzleXs.length / 2),
     directorIdleSec: t.fountain.idleMinSec * 0.7,
@@ -216,6 +254,7 @@ export function stepMatchState(
   input: MatchStepInput,
   t: Tuning = tuning,
   rng: () => number = defaultRulesRng,
+  stageOverride?: StageConfig,
 ): MatchStepResult {
   if (prev.finished) {
     return {
@@ -233,12 +272,28 @@ export function stepMatchState(
     };
   }
 
-  const stage = getStageForMatch(prev.mode, prev.stageId);
+  const stage = stageOverride ?? getStageForMatch(prev.mode, prev.stageId);
   const dtSec = Math.max(0, input.dtSec);
   const nextElapsed = prev.elapsedSec + dtSec;
   const nextRemaining = Math.max(0, prev.remainingSec - dtSec);
 
   const nozzles = prev.nozzles.map((n) => ({ ...n }));
+  if (
+    stage.movingNozzleSlot !== undefined &&
+    stage.movingNozzleSlot !== null &&
+    nozzles[stage.movingNozzleSlot] &&
+    nozzles[stage.movingNozzleSlot].phase !== 'PLUGGED'
+  ) {
+    const slotIdx = stage.movingNozzleSlot;
+    const baseX = stage.nozzleXs[slotIdx] ?? 195;
+    nozzles[slotIdx] = {
+      ...nozzles[slotIdx],
+      x: clamp(baseX + Math.sin(nextElapsed * 1.15) * 34, stage.grateLeftX + 18, stage.grateRightX - 18),
+    };
+  }
+  const photoFlashCycle = nextElapsed % 9.0;
+  const photoFlashSec = stage.photoFlashEnabled && photoFlashCycle >= 6.8 ? 9.0 - photoFlashCycle : 0;
+  const photoMult = photoFlashSec > 0 ? 2 : 1;
   const enteredPhases: FountainPhase[] = [];
   let playerHitBySurgeSlot: number | null = null;
   const rivalsHitBySurge: { rivalId: number; slotIndex: number }[] = [];
@@ -599,7 +654,7 @@ export function stepMatchState(
     if (combo > maxCombo) maxCombo = combo;
     const rateMult = computeControlRateMultiplier(combo, t);
     playerControl = clamp(
-      playerControl + t.control.baseGainPerSec * rateMult * playerPlugBoost * dtSec,
+      playerControl + t.control.baseGainPerSec * rateMult * playerPlugBoost * photoMult * dtSec,
       0,
       t.control.maxControl,
     );
@@ -615,7 +670,7 @@ export function stepMatchState(
     const rc = rivalControls.find((entry) => entry.id === g.id);
     if (rc) {
       rc.control = clamp(
-        rc.control + t.control.baseGainPerSec * stage.rivalGainMult * g.boost * dtSec,
+        rc.control + t.control.baseGainPerSec * stage.rivalGainMult * g.boost * photoMult * dtSec,
         0,
         t.control.maxControl,
       );
@@ -625,10 +680,13 @@ export function stepMatchState(
   const combo = computeComboMultiplier(playerHoldSec, t);
   let finished = false;
   let endReason: MatchState['endReason'] = 'none';
-  if (playerControl >= t.control.maxControl) {
+  if (prev.mode !== 'endless' && playerControl >= t.control.maxControl) {
     finished = true;
     endReason = 'player_full';
-  } else if (rivalControls.some((r) => r.control >= t.control.maxControl)) {
+  } else if (
+    prev.mode !== 'endless' &&
+    rivalControls.some((r) => r.control >= t.control.maxControl)
+  ) {
     finished = true;
     endReason = 'rival_full';
   } else if (nextRemaining <= 0) {
@@ -653,6 +711,8 @@ export function stepMatchState(
       propSmashCount: prev.propSmashCount,
       slamCount: prev.slamCount,
       plugCount: prev.plugCount,
+      bigUltCount: prev.bigUltCount,
+      photoFlashSec,
       nozzles,
       lastOpenedSlot,
       directorIdleSec,

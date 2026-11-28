@@ -1,4 +1,5 @@
 import { tuning, type Tuning } from '../config/tuning';
+import { STRINGS_ZH } from '../content/strings.zh';
 import { findNearbyPluggableNozzles, findPredictedPlugNozzle } from '../game/plug';
 import { didPlayerWinRace, evaluateNozzleOccupant } from '../game/rules';
 import type { PigeonFountainWorld, RivalBird } from '../game/world';
@@ -16,7 +17,9 @@ import {
   drawUndergroundPlugPipes,
 } from './plaza';
 import {
+  COMIC_PALETTE,
   computeViewportLayout,
+  roundRect,
   type RenderExtra,
 } from './shared';
 
@@ -212,6 +215,8 @@ export function drawGameFrame(
       airborne: r.airborne,
       sittingOnWater: onActive,
       wetSlump: false,
+      scaleMult: world.stage.bossKind === 'big_white' && r.id === 0 ? 1.28 : 1,
+      isBoss: Boolean(world.stage.bossKind && r.id === 0),
     });
   }
 
@@ -278,6 +283,44 @@ export function drawGameFrame(
 
   if (extra.screenMode !== 'title') {
     drawHudAndControls(ctx, world, extra, t);
+  }
+
+  if (extra.screenMode === 'playing') {
+    const badgeY = layout.hudOffsetY + 74;
+    if ((world.match.photoFlashSec ?? 0) > 0) {
+      ctx.save();
+      ctx.strokeStyle = COMIC_PALETTE.accentBright;
+      ctx.lineWidth = 4;
+      roundRect(ctx, 4, layout.hudOffsetY + 4, t.view.width - 8, layout.logicalHeight - layout.hudOffsetY - 8, 12);
+      ctx.stroke();
+
+      ctx.fillStyle = COMIC_PALETTE.accentBright;
+      roundRect(ctx, t.view.width / 2 - 86, badgeY, 172, 22, 11);
+      ctx.fill();
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = COMIC_PALETTE.outline;
+      ctx.font = '900 11px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(STRINGS_ZH.hud.photoFlashActive, t.view.width / 2, badgeY + 11);
+      ctx.restore();
+    } else if (world.stage.lowGravity) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(224, 242, 254, 0.92)';
+      roundRect(ctx, t.view.width / 2 - 68, badgeY, 136, 20, 10);
+      ctx.fill();
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.fillStyle = '#0369A1';
+      ctx.font = '800 10.5px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(STRINGS_ZH.hud.lowGravityBadge, t.view.width / 2, badgeY + 10);
+      ctx.restore();
+    }
   }
 
   if (extra.debug) {

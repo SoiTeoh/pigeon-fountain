@@ -18,6 +18,8 @@ export interface DrawBirdOptions {
   airborne?: boolean;
   sittingOnWater?: boolean;
   wetSlump?: boolean;
+  scaleMult?: number;
+  isBoss?: boolean;
 }
 
 const BIRD_COLORS: Record<
@@ -55,7 +57,7 @@ const BIRD_COLORS: Record<
 };
 
 export function drawBird(ctx: CanvasRenderingContext2D, opts: DrawBirdOptions): void {
-  const scale = opts.kind === 'sparrow' ? 0.74 : 1;
+  const scale = (opts.kind === 'sparrow' ? 0.74 : 1) * (opts.scaleMult ?? 1);
   const cols = BIRD_COLORS[opts.kind];
   const isAir = Boolean(opts.airborne);
   const isSitting = Boolean(opts.sittingOnWater) && !isAir;
@@ -165,7 +167,7 @@ export function drawBird(ctx: CanvasRenderingContext2D, opts: DrawBirdOptions): 
   ctx.ellipse(4, -22, 6.5, 3, -0.35, 0, Math.PI * 2);
   ctx.fill();
 
-  // Red crest spiky crown
+  // Red crest spiky crown or Boss golden crown
   if (opts.kind === 'red_crest') {
     ctx.fillStyle = COMIC_PALETTE.warningTomato;
     ctx.beginPath();
@@ -174,6 +176,18 @@ export function drawBird(ctx: CanvasRenderingContext2D, opts: DrawBirdOptions): 
     ctx.lineTo(14, -28);
     ctx.lineTo(20, -35);
     ctx.lineTo(18, -24);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  if (opts.isBoss) {
+    ctx.fillStyle = COMIC_PALETTE.accentMustard;
+    ctx.beginPath();
+    ctx.moveTo(1, -26);
+    ctx.lineTo(3, -38);
+    ctx.lineTo(8, -31);
+    ctx.lineTo(13, -40);
+    ctx.lineTo(16, -26);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();

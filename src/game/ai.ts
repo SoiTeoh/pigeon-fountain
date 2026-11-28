@@ -230,16 +230,19 @@ export function decideAiMove(input: AiDecisionInput, t: Tuning = tuning): AiDeci
     };
   }
 
-  // T3: Plug an IDLE/WARNING nozzle if player is sitting on an adjacent ACTIVE nozzle
+  // T3–T5: Plug an IDLE/WARNING nozzle if player is sitting on an adjacent ACTIVE nozzle
+  // T5: also flanks adjacent to player's occupied nozzle even if not yet ACTIVE, ready to counter-plug
   if (tierSpec.canPlug && plugCd <= 0) {
-    const playerActive = input.nozzles.find(
-      (n) => n.phase === 'ACTIVE' && Math.abs(input.playerX - n.x) <= t.fountain.coreRadiusPx,
+    const playerTarget = input.nozzles.find(
+      (n) =>
+        (n.phase === 'ACTIVE' || (tier >= 5 && n.phase === 'WARNING')) &&
+        Math.abs(input.playerX - n.x) <= t.fountain.coreRadiusPx + 4,
     );
-    if (playerActive) {
+    if (playerTarget) {
       const plugCandidate = input.nozzles.find(
         (n) =>
           (n.phase === 'IDLE' || n.phase === 'WARNING') &&
-          Math.abs(n.slotIndex - playerActive.slotIndex) === 1,
+          Math.abs(n.slotIndex - playerTarget.slotIndex) === 1,
       );
       if (plugCandidate) {
         const dx = plugCandidate.x - input.aiX;
@@ -267,6 +270,25 @@ export function decideAiMove(input: AiDecisionInput, t: Tuning = tuning): AiDeci
   const targetNozzle =
     findBestNozzle(input, seekPhases, playerPlugSlot, input.archetype === 'sparrow') ??
     findBestNozzle(input, seekPhases, null, false);
+
+  // T4+: Preemptively claim next likely IDLE nozzle before director opens it
+  if (!targetNozzle && tier >= 4) {
+    const midIdx = Math.floor(input.nozzles.length / 2);
+    const predNozzle =
+      input.nozzles.find((n, idx) => n.phase === 'IDLE' && idx !== midIdx && Math.abs(n.x - input.playerX) > 65) ??
+      input.nozzles[midIdx];
+    if (predNozzle) {
+      const dx = predNozzle.x - input.aiX;
+      if (Math.abs(dx) > 8) {
+        return {
+          ...baseIdle,
+          moveDir: dx > 0 ? 1 : -1,
+          intent: 'chase',
+          nextSurgeReactElapsedSec: 0,
+        };
+      }
+    }
+  }
 
   if (targetNozzle) {
     const flockOffset = input.archetype === 'sparrow' ? (input.birdIndex % 2 === 0 ? -10 : 10) : 0;

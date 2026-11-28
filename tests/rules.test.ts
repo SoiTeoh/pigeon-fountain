@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STAGES, tuning } from '../src/config/tuning';
+import { getCampaignLevel } from '../src/content/levels/campaign';
 import {
   checkPropHit,
   computeComboMultiplier,
@@ -8,6 +9,7 @@ import {
   createInitialProps,
   decideAiMove,
   evaluateButtSlam,
+  evaluateCampaignStars,
   evaluateNozzleOccupant,
   evaluateStageStars,
   shouldAdvanceSimulation,
@@ -440,7 +442,7 @@ describe('decideAiMove & archetypes', () => {
         surgeReactElapsedSec: 0.5,
         redCrestState: 'idle',
         redCrestTimerSec: 0,
-        redCrestCooldownSec: 0,
+        redCrestCooldownSec: 2.0,
         redCrestDir: 1,
         elapsedSec: 5,
       },
@@ -464,7 +466,7 @@ describe('decideAiMove & archetypes', () => {
         surgeReactElapsedSec: 0.1,
         redCrestState: 'idle',
         redCrestTimerSec: 0,
-        redCrestCooldownSec: 0,
+        redCrestCooldownSec: 2.0,
         redCrestDir: 1,
         elapsedSec: 5,
       },
@@ -484,7 +486,7 @@ describe('decideAiMove & archetypes', () => {
         surgeReactElapsedSec: tuning.aiTiers[2].reactionDelaySec,
         redCrestState: 'idle',
         redCrestTimerSec: 0,
-        redCrestCooldownSec: 0,
+        redCrestCooldownSec: 2.0,
         redCrestDir: 1,
         elapsedSec: 5,
       },
@@ -510,7 +512,7 @@ describe('decideAiMove & archetypes', () => {
         bumpCooldownSec: 0,
         redCrestState: 'idle',
         redCrestTimerSec: 0,
-        redCrestCooldownSec: 0,
+        redCrestCooldownSec: 2.0,
         redCrestDir: 1,
         elapsedSec: 5,
       },
@@ -535,7 +537,7 @@ describe('decideAiMove & archetypes', () => {
         playerPlugSlotIndex: 1,
         redCrestState: 'idle',
         redCrestTimerSec: 0,
-        redCrestCooldownSec: 0,
+        redCrestCooldownSec: 2.0,
         redCrestDir: 1,
         elapsedSec: 5,
       },
@@ -560,7 +562,7 @@ describe('decideAiMove & archetypes', () => {
         plugCooldownSec: 0,
         redCrestState: 'idle',
         redCrestTimerSec: 0,
-        redCrestCooldownSec: 0,
+        redCrestCooldownSec: 2.0,
         redCrestDir: 1,
         elapsedSec: 5,
       },
@@ -795,7 +797,7 @@ describe('PigeonFountainWorld integration mechanics', () => {
   });
 
   it('spawns golden seed sparks when melon_stall is smashed and respawns props after 8s in Endless', () => {
-    const world = new PigeonFountainWorld('endless', 1, tuning);
+    const world = new PigeonFountainWorld('endless', 1, tuning, 777);
     world.player.x = 52; // Stay clear of nozzles during 8s wait
     const melonProp = world.props.find((p) => p.kind === 'melon_stall')!;
     world.rivals[0].airborne = true;
@@ -1078,5 +1080,131 @@ describe('Stage progression, stars, and storage adapter', () => {
       if (idx === 16) expect(world.stage.bossKind).toBe('sparrow_gang');
       if (idx === 24) expect(world.stage.bossKind).toBe('pigeon_king');
     }
+  });
+
+  it('implements M3-2 mechanics: Boss bump immunity, lowGravity, moving nozzle, photoFlash 2x, T4/T5 AI & bad-deeds goals', () => {
+    // 1. Big White Boss (c1-l8) cannot be knocked back by bump
+    const bossWorld = new PigeonFountainWorld('stage', 1, tuning, 808, 8);
+    expect(bossWorld.stage.bossKind).toBe('big_white');
+    bossWorld.player.x = 120;
+    bossWorld.player.facing = 1;
+    bossWorld.rivals[0].x = 160;
+    bossWorld.rivals[0].bumpCooldownSec = 99;
+    const bossBump = bossWorld.step(
+      { moveDir: 0, bumpPressed: true, jumpPressed: false },
+      tuning.loop.fixedDtMs,
+    );
+    expect(bossBump.bumpedHit).toBe(true);
+    expect(bossWorld.rivals[0].stunTimerSec).toBe(0);
+    expect(Math.abs(bossWorld.rivals[0].vx)).toBeLessThan(80);
+
+    // 2. Low-gravity level (c2-l5 = idx 13) reduces downward gravity vs standard level
+    const lowGWorld = new PigeonFountainWorld('stage', 1, tuning, 909, 13);
+    expect(lowGWorld.stage.lowGravity).toBe(true);
+    const stdWorld = new PigeonFountainWorld('stage', 1, tuning, 909, 1);
+    lowGWorld.step({ moveDir: 0, bumpPressed: false, jumpPressed: true }, tuning.loop.fixedDtMs);
+    stdWorld.step({ moveDir: 0, bumpPressed: false, jumpPressed: true }, tuning.loop.fixedDtMs);
+    expect(lowGWorld.player.vy).toBeLessThan(stdWorld.player.vy); // smaller magnitude negative vy + slower fall
+
+    // 3. Moving nozzle (c3-l2 = idx 18) oscillates slot x over steps
+    const movWorld = new PigeonFountainWorld('stage', 1, tuning, 1717, 18);
+    expect(movWorld.stage.movingNozzleSlot).toBeDefined();
+    const movSlot = movWorld.stage.movingNozzleSlot!;
+    const initX = movWorld.match.nozzles[movSlot].x;
+    for (let i = 0; i < 60; i++) {
+      movWorld.step({ moveDir: 0, bumpPressed: false, jumpPressed: false }, tuning.loop.fixedDtMs);
+    }
+    expect(movWorld.match.nozzles[movSlot].x).not.toBe(initX);
+
+    // 4. Photo flash doubles player control gain during active photo flash window (6.8s..9.0s)
+    const baseState = createInitialMatchState('stage', 1, tuning, 1);
+    const activeState = {
+      ...baseState,
+      elapsedSec: 6.8,
+      nozzles: baseState.nozzles.map((n, i) =>
+        i === 1 ? { ...n, phase: 'ACTIVE' as const, phaseTimerSec: 5 } : { ...n, phase: 'IDLE' as const, phaseTimerSec: 5 },
+      ),
+    };
+    const resPhoto = stepMatchState(
+      activeState,
+      { dtSec: 0.5, playerX: activeState.nozzles[1].x, playerAirborne: false, rivals: [] },
+      tuning,
+      () => 0.5,
+      { ...STAGES[1], photoFlashEnabled: true },
+    );
+    const resNormal = stepMatchState(
+      { ...activeState, photoFlashSec: 0 },
+      { dtSec: 0.5, playerX: activeState.nozzles[1].x, playerAirborne: false, rivals: [] },
+      tuning,
+      () => 0.5,
+      STAGES[1],
+    );
+    expect(resPhoto.state.playerControl).toBeCloseTo(resNormal.state.playerControl * 2, 2);
+
+    // 5. T4 seeks WARNING nozzle ahead of activation; T5 counter-plugs adjacent to player's ACTIVE nozzle
+    const t4Nozzles: FountainSlotState[] = [
+      { slotIndex: 0, x: 105, phase: 'IDLE', phaseTimerSec: 2, style: 'bubble', tiltDeg: 0, lateralDir: 0, lateralStrength: 0, lateralTimerSec: 0, willSurge: false },
+      { slotIndex: 1, x: 195, phase: 'IDLE', phaseTimerSec: 2, style: 'bubble', tiltDeg: 0, lateralDir: 0, lateralStrength: 0, lateralTimerSec: 0, willSurge: false },
+      { slotIndex: 2, x: 285, phase: 'WARNING', phaseTimerSec: 0.5, style: 'bubble', tiltDeg: 0, lateralDir: 0, lateralStrength: 0, lateralTimerSec: 0, willSurge: false },
+    ];
+    const t4Dec = decideAiMove(
+      {
+        archetype: 'sparrow',
+        tier: 4,
+        birdIndex: 0,
+        aiX: 110,
+        playerX: 340,
+        nozzles: t4Nozzles,
+        stunTimerSec: 0,
+        surgeReactElapsedSec: 0,
+        bumpCooldownSec: 1,
+        plugCooldownSec: 0,
+        redCrestState: 'idle',
+        redCrestTimerSec: 0,
+        redCrestCooldownSec: 2.0,
+        redCrestDir: 1,
+        elapsedSec: 5,
+      },
+      tuning,
+    );
+    expect(t4Dec.moveDir).toBe(1);
+
+    const t5Nozzles: FountainSlotState[] = [
+      { slotIndex: 0, x: 105, phase: 'IDLE', phaseTimerSec: 2, style: 'bubble', tiltDeg: 0, lateralDir: 0, lateralStrength: 0, lateralTimerSec: 0, willSurge: false },
+      { slotIndex: 1, x: 195, phase: 'ACTIVE', phaseTimerSec: 3, style: 'bubble', tiltDeg: 0, lateralDir: 0, lateralStrength: 0, lateralTimerSec: 0, willSurge: false },
+      { slotIndex: 2, x: 285, phase: 'IDLE', phaseTimerSec: 2, style: 'bubble', tiltDeg: 0, lateralDir: 0, lateralStrength: 0, lateralTimerSec: 0, willSurge: false },
+    ];
+    const t5Dec = decideAiMove(
+      {
+        archetype: 'red_crest',
+        tier: 5,
+        birdIndex: 0,
+        aiX: 105,
+        playerX: 195,
+        nozzles: t5Nozzles,
+        stunTimerSec: 0,
+        surgeReactElapsedSec: 0,
+        bumpCooldownSec: 1,
+        plugCooldownSec: 0,
+        redCrestState: 'idle',
+        redCrestTimerSec: 0,
+        redCrestCooldownSec: 2.0,
+        redCrestDir: 1,
+        elapsedSec: 5,
+      },
+      tuning,
+    );
+    expect(t5Dec.intent).toBe('plug');
+    expect(t5Dec.shouldJumpToPlug).toBe(true);
+
+    // 6. Bad-deeds goals evaluation
+    const lv = getCampaignLevel(1);
+    const evalRes = evaluateCampaignStars(
+      { ...baseState, playerControl: 100, endReason: 'player_full', finished: true, plugCount: 1, playerSurgeHits: 0 },
+      STAGES[1],
+      lv.goalDefs,
+    );
+    expect(evalRes.stars).toBe(3);
+    expect(evalRes.goalResults).toEqual([true, true]);
   });
 });

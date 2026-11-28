@@ -219,8 +219,9 @@ export class PigeonFountainWorld {
       this.player.vx = clamp(this.player.vx, -maxSpd, maxSpd);
     }
 
+    const gravMult = this.stage.lowGravity ? 0.55 : 1;
     if (this.player.airborne) {
-      this.player.vy += this.t.pigeon.gravity * dtSec;
+      this.player.vy += this.t.pigeon.gravity * gravMult * dtSec;
       if (!this.player.isJumping) {
         this.player.spinRad += 14 * dtSec;
       }
@@ -236,6 +237,7 @@ export class PigeonFountainWorld {
       this.fxRng,
       dtSec,
       this.t,
+      gravMult,
     );
     const redCrestCharged = aiMoveRes.redCrestCharged;
     if (aiMoveRes.rivalBumpedPlayer) {
@@ -276,6 +278,7 @@ export class PigeonFountainWorld {
         this.floats,
         this.fxRng,
         this.t,
+        this.stage,
       );
       bumpedHit = bumpRes.bumpedHit;
       bumpedWhiff = bumpRes.bumpedWhiff;
@@ -293,6 +296,7 @@ export class PigeonFountainWorld {
         this.floats,
         this.fxRng,
         this.t,
+        this.stage,
       )
     ) {
       bumpedHit = true;
@@ -569,6 +573,7 @@ export class PigeonFountainWorld {
       nextMatchState = {
         ...nextMatchState,
         playerControl: nextCtrl,
+        bigUltCount: nextMatchState.bigUltCount + 1,
         finished: nextCtrl >= this.t.control.maxControl ? true : nextMatchState.finished,
         endReason: nextCtrl >= this.t.control.maxControl ? 'player_full' : nextMatchState.endReason,
       };
@@ -644,6 +649,7 @@ export class PigeonFountainWorld {
       },
       this.t,
       this.simRng,
+      this.stage,
     );
     this.match = ruleRes.state;
     this.occupant = ruleRes.occupant;

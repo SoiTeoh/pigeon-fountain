@@ -1,5 +1,6 @@
 import './style.css';
-import { STAGES, tuning } from './config/tuning';
+import { tuning } from './config/tuning';
+import { getCampaignLevel } from './content/levels/campaign';
 import { STRINGS_ZH } from './content/strings.zh';
 import { InputController, toWorldStepInput } from './core/input';
 import { ReplayRecorder } from './core/replay';
@@ -7,7 +8,7 @@ import { generateRandomSeed } from './core/rng';
 import { SoundEngine } from './game/audio';
 import {
   didPlayerWinRace,
-  evaluateStageStars,
+  evaluateCampaignStars,
   getMaxRivalControl,
   shouldAdvanceSimulation,
 } from './game/rules';
@@ -342,8 +343,7 @@ async function main(): Promise<void> {
       const ui = tuning.ui.result;
       const opt = { x: pt.x, y: pt.y - layout.overlayOffsetY };
       const stageCleared =
-        world.match.mode === 'stage' &&
-        evaluateStageStars(world.match, world.stage) >= 1;
+        world.match.mode === 'stage' && didPlayerWinRace(world.match);
       const wonTut = world.match.mode === 'tutorial' && didPlayerWinRace(world.match);
       const campIdx = world.stage.campaignIndex ?? world.match.stageId;
       const hasNext = (stageCleared && campIdx < 24) || wonTut;
@@ -494,15 +494,16 @@ async function main(): Promise<void> {
 
     if (sceneManager.mode === 'result') {
       if (e.code === 'KeyR' && !e.repeat) {
-        startNewGame(gameMode, selectedStageId);
+        startNewGame(gameMode, selectedStageId, selectedCampaignLevel);
       } else if (e.code === 'Enter' && !e.repeat) {
+        const campIdx = world.stage.campaignIndex ?? world.match.stageId;
         const stageCleared =
-          world.match.mode === 'stage' &&
-          evaluateStageStars(world.match, STAGES[world.match.stageId]) >= 1;
-        if (stageCleared && world.match.stageId < 4) {
-          startNewGame('stage', (world.match.stageId + 1) as StageId);
+          world.match.mode === 'stage' && didPlayerWinRace(world.match);
+        if (stageCleared && campIdx < 24) {
+          const nextCamp = campIdx + 1;
+          startNewGame('stage', Math.min(4, Math.ceil(nextCamp / 8)) as StageId, nextCamp);
         } else {
-          startNewGame(gameMode, selectedStageId);
+          startNewGame(gameMode, selectedStageId, selectedCampaignLevel);
         }
       }
       return;
@@ -746,8 +747,9 @@ async function main(): Promise<void> {
           };
         }
       } else if (world.match.mode === 'stage') {
-        const stars = evaluateStageStars(world.match, world.stage);
         const campIdx = world.stage.campaignIndex ?? world.match.stageId;
+        const campLevel = getCampaignLevel(campIdx);
+        const { stars } = evaluateCampaignStars(world.match, world.stage, campLevel.goalDefs);
         progress = applyCampaignCompletion(
           progress,
           campIdx,
