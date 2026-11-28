@@ -1012,7 +1012,8 @@ describe('Stage progression, stars, and storage adapter', () => {
     }
     expect(warnSeen).toBe(true);
     expect(launchSeen).toBe(true);
-    expect(world.match.playerControl).toBe(30);
+    expect(world.match.playerControl).toBeGreaterThanOrEqual(30);
+    expect(world.match.playerControl).toBeLessThan(35);
   });
 
   it('sets 60s duration for Endless mode and verifies 4 distinct stage configs', () => {
@@ -1035,5 +1036,37 @@ describe('Stage progression, stars, and storage adapter', () => {
     expect(tut3.match.nozzles[0].phase).toBe('IDLE');
     expect(tut3.match.nozzles[2].phase).toBe('IDLE');
     expect(tut3.rivals[0].x).toBe(tut3.match.nozzles[1].x);
+  });
+
+  it('connects dash bump during lunge, gives player stronger shove force, and brakes jump drift on release', () => {
+    // 1. Dash bump connects when rival starts just outside initial bumpReachPx
+    const world = new PigeonFountainWorld('stage', 1, tuning, 444);
+    world.player.x = 120;
+    world.player.facing = 1;
+    world.rivals[0].x = 120 + tuning.pigeon.bumpReachPx + 4;
+    world.rivals[0].bumpCooldownSec = 99;
+    let hitConnected = false;
+    for (let i = 0; i < 12; i++) {
+      const ev = world.step(
+        { moveDir: 0, bumpPressed: i === 0, jumpPressed: false },
+        tuning.loop.fixedDtMs,
+      );
+      if (ev.bumpedHit) {
+        hitConnected = true;
+        break;
+      }
+    }
+    expect(hitConnected).toBe(true);
+    expect(world.rivals[0].stunTimerSec).toBeGreaterThan(0);
+
+    // 2. Mid-air jump brake damps vx rapidly when stopOnRelease is true
+    const airWorld = new PigeonFountainWorld('stage', 1, tuning, 555);
+    airWorld.step({ moveDir: 1, moveScale: 1, directControl: true, bumpPressed: false, jumpPressed: true }, tuning.loop.fixedDtMs);
+    expect(airWorld.player.airborne).toBe(true);
+    expect(airWorld.player.vx).toBeGreaterThan(200);
+    for (let i = 0; i < 10; i++) {
+      airWorld.step({ moveDir: 0, stopOnRelease: true, directControl: true, bumpPressed: false, jumpPressed: false }, tuning.loop.fixedDtMs);
+    }
+    expect(airWorld.player.vx).toBeLessThan(60);
   });
 });

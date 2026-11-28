@@ -284,16 +284,23 @@ export function resolveRivalInteractions(
         pushFloatingText(floats, t, player.x, t.scene.groundY - 62, '被顶开啦！', '#fb7185', 1);
       }
 
-      const minSep = (t.pigeon.radius + r.radius) * 0.82;
+      const minSep = (t.pigeon.radius + r.radius) * 0.84;
       const dx = r.x - player.x;
       const absDx = Math.abs(dx);
       if (absDx < minSep) {
         const dir = dx >= 0 ? 1 : -1;
-        const overlap = (minSep - absDx) * 0.5;
-        player.x -= dir * overlap;
-        r.x += dir * overlap;
-        player.vx -= dir * t.pigeon.softBounceSpeed * dtSec * 4;
-        r.vx += dir * t.pigeon.softBounceSpeed * dtSec * 4;
+        const overlap = minSep - absDx;
+        const playerPushing = player.vx * dir > 30;
+        const rivalPushing = r.vx * -dir > 30;
+        const playerShare = playerPushing ? 0.2 : rivalPushing ? 0.32 : 0.4;
+        const rivalShare = 1 - playerShare;
+        const playerBounceMult = playerPushing ? 0.25 : rivalPushing ? 0.35 : 0.6;
+        const rivalBounceMult = playerPushing ? 1.75 : rivalPushing ? 1.25 : 1.1;
+
+        player.x -= dir * overlap * playerShare;
+        r.x += dir * overlap * rivalShare;
+        player.vx -= dir * t.pigeon.softBounceSpeed * dtSec * 4 * playerBounceMult;
+        r.vx += dir * t.pigeon.softBounceSpeed * dtSec * 4 * rivalBounceMult;
       }
     }
   }
@@ -357,6 +364,38 @@ export function resolveRivalInteractions(
   };
 }
 
+function applyBumpHitToRivals(
+  player: PigeonBody,
+  targets: readonly RivalBird[],
+  dashDir: -1 | 1,
+  particles: Particle[],
+  floats: FloatingText[],
+  fxRng: () => number,
+  t: Tuning,
+): void {
+  for (const r of targets) {
+    const knockMult =
+      r.archetype === 'sparrow'
+        ? t.pigeon.sparrowKnockbackMult
+        : r.archetype === 'white_pigeon'
+          ? t.pigeon.whiteKnockbackMult
+          : 1;
+    const hitDir = r.x >= player.x - 10 ? dashDir : (-dashDir as -1 | 1);
+    r.vx = hitDir * t.pigeon.bumpKnockbackSpeed * knockMult;
+    r.stunTimerSec = t.pigeon.bumpStunSec;
+    r.redCrestState = 'idle';
+    r.redCrestTimerSec = 0;
+    r.squashX = 0.76;
+    r.squashY = 1.26;
+    const feather = rivalFeatherSpec(r.archetype);
+    spawnParticleBurst(particles, fxRng, r.x, t.scene.groundY - 24, 4, feather.kind, feather.color, 55, 140);
+  }
+  spawnParticleBurst(particles, fxRng, player.x + dashDir * 24, t.scene.groundY - 22, 9, 'spark', '#fde047', 80, 215);
+  if (targets.length >= 2) {
+    pushFloatingText(floats, t, player.x, t.scene.groundY - 68, '一锅端！', '#fde047', 1.12);
+  }
+}
+
 export function performPlayerBump(
   player: PigeonBody & { bumpCooldownSec: number; bumpAnimSec: number },
   rivals: RivalBird[],
@@ -395,28 +434,29 @@ export function performPlayerBump(
   player.squashY = 0.8;
 
   if (targets.length > 0) {
-    for (const r of targets) {
-      const knockMult =
-        r.archetype === 'sparrow'
-          ? t.pigeon.sparrowKnockbackMult
-          : r.archetype === 'white_pigeon'
-            ? t.pigeon.whiteKnockbackMult
-            : 1;
-      const hitDir = r.x >= player.x - 10 ? dashDir : (-dashDir as -1 | 1);
-      r.vx = hitDir * t.pigeon.bumpKnockbackSpeed * knockMult;
-      r.stunTimerSec = t.pigeon.bumpStunSec;
-      r.redCrestState = 'idle';
-      r.redCrestTimerSec = 0;
-      r.squashX = 0.76;
-      r.squashY = 1.26;
-      const feather = rivalFeatherSpec(r.archetype);
-      spawnParticleBurst(particles, fxRng, r.x, t.scene.groundY - 24, 4, feather.kind, feather.color, 55, 140);
-    }
-    spawnParticleBurst(particles, fxRng, player.x + dashDir * 24, t.scene.groundY - 22, 9, 'spark', '#fde047', 80, 215);
-    if (targets.length >= 2) {
-      pushFloatingText(floats, t, player.x, t.scene.groundY - 68, '一锅端！', '#fde047', 1.12);
-    }
+    applyBumpHitToRivals(player, targets, dashDir, particles, floats, fxRng, t);
     return { bumpedHit: true, bumpedWhiff: false, shakeMagDelta: 3 };
   }
   return { bumpedHit: false, bumpedWhiff: true, shakeMagDelta: 0 };
+}
+
+export function applyDashBumpCollision(
+  player: PigeonBody & { bumpCooldownSec: number; bumpAnimSec: number },
+  rivals: RivalBird[],
+  particles: Particle[],
+  floats: FloatingText[],
+  fxRng: () => number,
+  t: Tuning,
+): boolean {
+  const hitRadius = t.pigeon.radius + 26;
+  const targets = rivals.filter(
+    (r) =>
+      !r.airborne &&
+      r.respawnTimerSec <= 0 &&
+      r.stunTimerSec <= 0 &&
+      Math.abs(r.x - player.x) <= hitRadius,
+  );
+  if (targets.length === 0) return false;
+  applyBumpHitToRivals(player, targets, player.facing, particles, floats, fxRng, t);
+  return true;
 }

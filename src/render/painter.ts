@@ -145,6 +145,23 @@ export function drawGameFrame(
         drawButtIcon(ctx, n.x, t.scene.groundY - 28 + bob, 0.85, 0.9);
       }
     }
+
+    // Show crisp yellow bump-range target ring under grounded rivals inside bumpReachPx
+    if (!world.player.airborne && world.player.bumpCooldownSec <= 0) {
+      for (const r of world.rivals) {
+        if (r.airborne || r.respawnTimerSec > 0) continue;
+        if (Math.abs(r.x - world.player.x) <= t.pigeon.bumpReachPx) {
+          ctx.save();
+          ctx.strokeStyle = '#FACC15';
+          ctx.lineWidth = 2.6;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          ctx.ellipse(r.x, t.scene.groundY - 1, 22, 6.5, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
   }
 
   for (const r of world.rivals) {

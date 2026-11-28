@@ -6,7 +6,7 @@ import { createInitialPlugState, findPluggableNozzle, startPlugOnNozzle, stepPlu
 import { clamp, createInitialMatchState, createInitialProps, evaluateButtSlam, getStageForMatch, stepMatchState, type MatchState, type Occupant, type PropState } from './rules';
 import { pushFloatingText, spawnParticleBurst, stepBirdSquashAndExpression, stepWorldVisualFx } from './worldFx';
 import { spawnAmbientFountainParticles, stepCornAndPickups } from './worldPickups';
-import { launchRivalFromFountain, performPlayerBump, resolveRivalInteractions, stepRivalsMovement } from './worldRivals';
+import { applyDashBumpCollision, launchRivalFromFountain, performPlayerBump, resolveRivalInteractions, stepRivalsMovement } from './worldRivals';
 import { createEmptyWorldEvents, createRivalBirds, type BonusPickup, type FloatingText, type Particle, type PigeonBody, type PlayerExpression, type PlugCallout, type RivalBird, type ShockwaveRing, type WorldStepEvents, type WorldStepInput } from './worldTypes';
 
 export * from './worldTypes';
@@ -184,10 +184,11 @@ export class PigeonFountainWorld {
       if (this.player.vx * moveDir < 0) {
         this.player.vx = 0;
       }
-      if (input.directControl && !this.player.airborne && this.player.bumpAnimSec <= 0) {
-        this.player.vx = moveDir * this.t.pigeon.playerMaxSpeed * moveScale;
+      if (input.directControl && this.player.bumpAnimSec <= 0) {
+        const speedMult = this.player.airborne && this.player.isJumping ? 0.92 : 1;
+        this.player.vx = moveDir * this.t.pigeon.playerMaxSpeed * speedMult * moveScale;
       } else {
-        const airControl = this.player.airborne ? 0.85 : 1;
+        const airControl = this.player.airborne ? 0.9 : 1;
         this.player.vx += moveDir * this.t.pigeon.playerMoveAccel * 4 * moveScale * airControl * dtSec;
       }
       if (!this.player.airborne) {
@@ -198,9 +199,17 @@ export class PigeonFountainWorld {
         this.player.vx = 0;
       } else {
         const drag =
-          this.occupant === 'player' ? this.t.pigeon.waterDrag : this.t.pigeon.groundDrag;
+          this.player.bumpAnimSec > 0
+            ? 2.2
+            : this.occupant === 'player'
+              ? this.t.pigeon.waterDrag
+              : this.t.pigeon.groundDrag;
         this.player.vx -= this.player.vx * Math.min(1, drag * dtSec);
       }
+    } else if (this.player.isJumping) {
+      // Air brake so releasing joystick stops horizontal drift cleanly over target nozzles
+      const airBrake = input.stopOnRelease ? 12 : 8.5;
+      this.player.vx -= this.player.vx * Math.min(1, airBrake * dtSec);
     }
 
     if (this.player.bumpAnimSec <= 0 && (!this.player.airborne || this.player.isJumping)) {
@@ -273,6 +282,21 @@ export class PigeonFountainWorld {
       if (bumpRes.bumpedHit) {
         this.hitStopTimerSec = Math.max(this.hitStopTimerSec, this.t.props.hitStopSec);
       }
+    } else if (
+      this.player.bumpAnimSec > 0.04 &&
+      !this.player.airborne &&
+      applyDashBumpCollision(
+        this.player,
+        this.rivals,
+        this.particles,
+        this.floats,
+        this.fxRng,
+        this.t,
+      )
+    ) {
+      bumpedHit = true;
+      this.shakeMag = Math.max(this.shakeMag, 3);
+      this.hitStopTimerSec = Math.max(this.hitStopTimerSec, this.t.props.hitStopSec);
     }
 
     // Integrate positions
