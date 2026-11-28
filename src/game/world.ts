@@ -52,13 +52,14 @@ export class PigeonFountainWorld {
     stageId: StageId = 1,
     t: Tuning = tuning,
     seed?: number,
+    campaignLevel?: number,
   ) {
     this.t = t;
     this.seed = seed !== undefined ? normalizeSeed(seed) : generateRandomSeed();
     this.simRng = mulberry32(this.seed);
     this.fxRng = mulberry32(this.seed ^ 0xa5a5a5a5);
-    this.stage = getStageForMatch(mode, stageId);
-    this.match = createInitialMatchState(mode, stageId, t);
+    this.stage = getStageForMatch(mode, stageId, campaignLevel);
+    this.match = createInitialMatchState(mode, stageId, t, campaignLevel);
     this.props = createInitialProps(this.stage);
     this.player = {
       x: 118,

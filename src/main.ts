@@ -13,8 +13,8 @@ import {
 } from './game/rules';
 import { PigeonFountainWorld } from './game/world';
 import {
+  applyCampaignCompletion,
   applyEndlessCompletion,
-  applyStageCompletion,
   readProgress,
   writeProgress,
   type GameMode,
@@ -73,7 +73,9 @@ async function main(): Promise<void> {
   let progress = readProgress();
   let gameMode: GameMode = 'stage';
   let selectedStageId: StageId = 1;
-  let world = new PigeonFountainWorld(gameMode, selectedStageId, activeTuning, generateRandomSeed());
+  let selectedCampaignLevel: number = progress.unlockedCampaignLevel;
+  let mapChapter: 1 | 2 | 3 = (Math.ceil(selectedCampaignLevel / 8) as 1 | 2 | 3) || 1;
+  let world = new PigeonFountainWorld(gameMode, selectedStageId, activeTuning, generateRandomSeed(), selectedCampaignLevel);
   let replayRecorder: ReplayRecorder | null = null;
   const sceneManager = new SceneManager('title');
   let animTimeSec = 0;
@@ -162,16 +164,26 @@ async function main(): Promise<void> {
   }
 
   function syncPreviewWorld(): void {
-    world = new PigeonFountainWorld(gameMode, selectedStageId, activeTuning, generateRandomSeed());
+    const campArg = gameMode === 'stage' ? selectedCampaignLevel : undefined;
+    world = new PigeonFountainWorld(gameMode, selectedStageId, activeTuning, generateRandomSeed(), campArg);
     replayRecorder = null;
   }
 
-  function startNewGame(mode: GameMode = gameMode, stageId: StageId = selectedStageId): void {
+  function startNewGame(
+    mode: GameMode = gameMode,
+    stageId: StageId = selectedStageId,
+    campaignIdx: number = selectedCampaignLevel,
+  ): void {
     sound.unlock();
     gameMode = mode;
     selectedStageId = stageId;
+    if (mode === 'stage') {
+      selectedCampaignLevel = Math.max(1, Math.min(24, Math.round(campaignIdx)));
+      mapChapter = (Math.ceil(selectedCampaignLevel / 8) as 1 | 2 | 3) || 1;
+    }
     const matchSeed = generateRandomSeed();
-    world = new PigeonFountainWorld(mode, stageId, activeTuning, matchSeed);
+    const campArg = mode === 'stage' ? selectedCampaignLevel : undefined;
+    world = new PigeonFountainWorld(mode, stageId, activeTuning, matchSeed, campArg);
     replayRecorder = new ReplayRecorder(mode, stageId, matchSeed);
     soakAudioAcc = 0;
     plugAudioAcc = 0;
@@ -269,9 +281,18 @@ async function main(): Promise<void> {
           homeSubView = 'home';
           return;
         }
+        for (const tab of HOME_UI.mapChapterTabs) {
+          if (hitRect(opt, tab)) {
+            mapChapter = tab.chapter;
+            sound.playUiClick();
+            return;
+          }
+        }
         for (const node of HOME_UI.mapNodes) {
-          if (hitCircle(opt, node, 8) && node.id <= progress.unlockedStage) {
-            selectedStageId = node.id;
+          const campIdx = (mapChapter - 1) * 8 + node.indexInChapter;
+          if (hitCircle(opt, node, 8) && campIdx <= progress.unlockedCampaignLevel) {
+            selectedCampaignLevel = campIdx;
+            selectedStageId = Math.min(4, Math.max(1, mapChapter)) as StageId;
             gameMode = 'stage';
             syncPreviewWorld();
             homeSubView = 'prelevel';
@@ -290,7 +311,7 @@ async function main(): Promise<void> {
       }
       if (hitRect(opt, HOME_UI.preStartBtn)) {
         sound.playUiClick();
-        startNewGame('stage', selectedStageId);
+        startNewGame('stage', selectedStageId, selectedCampaignLevel);
       }
       return;
     }
@@ -302,7 +323,7 @@ async function main(): Promise<void> {
         togglePause();
       } else if (hitRect(opt, ui.restartBtn)) {
         sound.playUiClick();
-        startNewGame(gameMode, selectedStageId);
+        startNewGame(gameMode, selectedStageId, selectedCampaignLevel);
       } else if (hitRect(opt, ui.homeBtn)) {
         sound.playUiClick();
         returnToHome();
@@ -322,9 +343,10 @@ async function main(): Promise<void> {
       const opt = { x: pt.x, y: pt.y - layout.overlayOffsetY };
       const stageCleared =
         world.match.mode === 'stage' &&
-        evaluateStageStars(world.match, STAGES[world.match.stageId]) >= 1;
+        evaluateStageStars(world.match, world.stage) >= 1;
       const wonTut = world.match.mode === 'tutorial' && didPlayerWinRace(world.match);
-      const hasNext = (stageCleared && world.match.stageId < 4) || wonTut;
+      const campIdx = world.stage.campaignIndex ?? world.match.stageId;
+      const hasNext = (stageCleared && campIdx < 24) || wonTut;
 
       if (hasNext && hitRect(opt, ui.primaryBtn)) {
         sound.playUiClick();
@@ -332,10 +354,11 @@ async function main(): Promise<void> {
           if (world.match.stageId < 3) {
             startNewGame('tutorial', (world.match.stageId + 1) as StageId);
           } else {
-            startNewGame('stage', 1);
+            startNewGame('stage', 1, 1);
           }
         } else {
-          startNewGame('stage', (world.match.stageId + 1) as StageId);
+          const nextCamp = Math.min(24, campIdx + 1);
+          startNewGame('stage', Math.min(4, Math.ceil(nextCamp / 8)) as StageId, nextCamp);
         }
         return;
       }
@@ -344,7 +367,7 @@ async function main(): Promise<void> {
       const rightBtn = hasNext ? ui.secondaryRightBtn : ui.soloRightBtn;
       if (hitRect(opt, leftBtn)) {
         sound.playUiClick();
-        startNewGame(gameMode, selectedStageId);
+        startNewGame(gameMode, selectedStageId, selectedCampaignLevel);
       } else if (hitRect(opt, rightBtn)) {
         sound.playUiClick();
         returnToHome();
@@ -723,12 +746,14 @@ async function main(): Promise<void> {
           };
         }
       } else if (world.match.mode === 'stage') {
-        const stars = evaluateStageStars(world.match, STAGES[world.match.stageId]);
-        progress = applyStageCompletion(
+        const stars = evaluateStageStars(world.match, world.stage);
+        const campIdx = world.stage.campaignIndex ?? world.match.stageId;
+        progress = applyCampaignCompletion(
           progress,
-          world.match.stageId,
+          campIdx,
           Math.round(world.match.playerControl),
           stars,
+          didPlayerWinRace(world.match),
         );
       } else {
         progress = applyEndlessCompletion(progress, world.match.score);
@@ -779,6 +804,8 @@ async function main(): Promise<void> {
       {
         screenMode: sceneManager.mode,
         homeSubView,
+        mapChapter,
+        selectedCampaignLevel,
         gameMode,
         selectedStageId,
         progress,

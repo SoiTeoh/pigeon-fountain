@@ -7,6 +7,10 @@ import {
   type Tuning,
 } from '../config/tuning';
 import {
+  campaignLevelToStageConfig,
+  getCampaignLevel,
+} from '../content/levels/campaign';
+import {
   getTutorialLevel,
   tutorialLevelToStageConfig,
 } from '../content/levels/tutorials';
@@ -79,11 +83,18 @@ export function evaluateStageStars(
   return 1;
 }
 
-export function getStageForMatch(mode: GameMode, stageId: StageId): StageConfig {
+export function getStageForMatch(
+  mode: GameMode,
+  stageId: StageId,
+  campaignLevel?: number,
+): StageConfig {
   if (mode === 'endless') return ENDLESS_STAGE;
   if (mode === 'tutorial') {
     const tutId = stageId === 1 ? 'tut-1' : stageId === 2 ? 'tut-2' : 'tut-3';
     return tutorialLevelToStageConfig(getTutorialLevel(tutId));
+  }
+  if (campaignLevel !== undefined && campaignLevel >= 1 && campaignLevel <= 24) {
+    return campaignLevelToStageConfig(getCampaignLevel(campaignLevel));
   }
   return STAGES[stageId];
 }
@@ -115,8 +126,9 @@ export function createInitialMatchState(
   mode: GameMode = 'stage',
   stageId: StageId = 1,
   t: Tuning = tuning,
+  campaignLevel?: number,
 ): MatchState {
-  const stage = getStageForMatch(mode, stageId);
+  const stage = getStageForMatch(mode, stageId, campaignLevel);
   return {
     mode,
     stageId,

@@ -1,4 +1,5 @@
-import { STAGES, type Tuning } from '../config/tuning';
+import type { Tuning } from '../config/tuning';
+import { campaignLevelToStageConfig, getCampaignLevel } from '../content/levels/campaign';
 import { RIVAL_NAMES, showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
 import {
   didPlayerWinRace,
@@ -53,7 +54,6 @@ export function drawTitleOverlay(
     t,
   );
   const sub = extra.homeSubView ?? 'home';
-  const stage = STAGES[extra.selectedStageId];
 
   if (sub === 'home') {
     // Upper half: bold comic sticker Logo over live AI fountain battle (no instruction paragraphs!)
@@ -131,16 +131,29 @@ export function drawTitleOverlay(
     drawStickerButton(ctx, HOME_UI.mapBackBtn, '#F1F5F9', COMIC_PALETTE.outline, STRINGS_ZH.title.back, '800 12px sans-serif');
 
     ctx.fillStyle = COMIC_PALETTE.outline;
-    ctx.font = '900 21px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.font = '900 20px "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(STRINGS_ZH.title.mapHeading, width / 2 + 22, 90);
+    ctx.fillText(STRINGS_ZH.title.mapHeading, width / 2 + 24, 88);
 
-    // Winding dashed street path connecting Stage 1 -> 4
+    const activeChapter = extra.mapChapter ?? 1;
+    for (const tab of HOME_UI.mapChapterTabs) {
+      const activeTab = tab.chapter === activeChapter;
+      drawStickerButton(
+        ctx,
+        tab,
+        activeTab ? COMIC_PALETTE.accentBright : '#F1F5F9',
+        COMIC_PALETTE.outline,
+        tab.label,
+        '800 12px sans-serif',
+      );
+    }
+
+    // Winding dashed street path connecting 8 chapter nodes
     ctx.save();
     ctx.strokeStyle = COMIC_PALETTE.outline;
-    ctx.lineWidth = 5;
-    ctx.setLineDash([10, 8]);
+    ctx.lineWidth = 4.5;
+    ctx.setLineDash([8, 7]);
     ctx.beginPath();
     HOME_UI.mapNodes.forEach((node, idx) => {
       if (idx === 0) ctx.moveTo(node.x, node.y);
@@ -150,10 +163,14 @@ export function drawTitleOverlay(
     ctx.setLineDash([]);
     ctx.restore();
 
+    const selectedCampIdx = extra.selectedCampaignLevel ?? extra.selectedStageId;
     for (const node of HOME_UI.mapNodes) {
-      const unlocked = node.id <= extra.progress.unlockedStage;
-      const selected = node.id === extra.selectedStageId;
-      const stars = extra.progress.stars[node.id];
+      const campIdx = (activeChapter - 1) * 8 + node.indexInChapter;
+      const lvl = getCampaignLevel(campIdx);
+      const unlocked = campIdx <= extra.progress.unlockedCampaignLevel;
+      const selected = campIdx === selectedCampIdx;
+      const stars = extra.progress.campaignStars[campIdx] ?? 0;
+      const isBoss = node.indexInChapter === 8;
 
       ctx.save();
       ctx.fillStyle = COMIC_PALETTE.outline;
@@ -163,30 +180,34 @@ export function drawTitleOverlay(
 
       ctx.fillStyle = selected
         ? COMIC_PALETTE.accentBright
-        : unlocked
-          ? COMIC_PALETTE.fountainBright
-          : '#E2E8F0';
+        : isBoss && unlocked
+          ? '#FCA5A5'
+          : unlocked
+            ? COMIC_PALETTE.fountainBright
+            : '#E2E8F0';
       ctx.strokeStyle = COMIC_PALETTE.outline;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2.8;
       ctx.beginPath();
       ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = unlocked ? COMIC_PALETTE.outline : '#64748B';
-      ctx.font = '900 15px sans-serif';
+      ctx.font = '900 13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(unlocked ? `${node.id}` : '🔒', node.x, node.y - 4);
+      ctx.fillText(unlocked ? (isBoss ? '👑' : `${lvl.indexInChapter}`) : '🔒', node.x, node.y - 5);
 
-      const starStr = unlocked ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '未解锁';
-      ctx.fillStyle = unlocked && stars > 0 ? '#D97706' : '#475569';
-      ctx.font = '800 10px sans-serif';
-      ctx.fillText(starStr, node.x, node.y + 14);
+      const starStr = unlocked ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '';
+      if (starStr) {
+        ctx.fillStyle = stars > 0 ? '#D97706' : '#475569';
+        ctx.font = '800 9px sans-serif';
+        ctx.fillText(starStr, node.x, node.y + 12);
+      }
 
       ctx.fillStyle = COMIC_PALETTE.outline;
-      ctx.font = '800 12px sans-serif';
-      ctx.fillText(STAGES[node.id].shortName, node.x, node.y + node.r + 16);
+      ctx.font = '800 10.5px sans-serif';
+      ctx.fillText(lvl.shortName, node.x, node.y + node.r + 13);
       ctx.restore();
     }
     ctx.restore();
@@ -194,6 +215,8 @@ export function drawTitleOverlay(
   }
 
   // Pre-level card ('prelevel'): stage banner + rival avatars + bad-deeds goal checklist + CTA
+  const campLevelDef = getCampaignLevel(extra.selectedCampaignLevel ?? extra.selectedStageId);
+  const preStage = campaignLevelToStageConfig(campLevelDef);
   const card = HOME_UI.preCard;
   ctx.fillStyle = COMIC_PALETTE.outline;
   roundRect(ctx, card.x, card.y + 5, card.w, card.h, card.r);
@@ -208,10 +231,10 @@ export function drawTitleOverlay(
   drawStickerButton(ctx, HOME_UI.preBackBtn, '#F1F5F9', COMIC_PALETTE.outline, STRINGS_ZH.title.back, '800 12px sans-serif');
 
   ctx.fillStyle = COMIC_PALETTE.outline;
-  ctx.font = '900 19px "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.font = '900 18px "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(stage.title, width / 2, 166, card.w - 32);
+  ctx.fillText(preStage.title, width / 2, 166, card.w - 32);
 
   // Rivals showcase box
   ctx.fillStyle = '#FFF6EB';
@@ -225,13 +248,19 @@ export function drawTitleOverlay(
   ctx.font = '800 11px sans-serif';
   ctx.fillText(STRINGS_ZH.title.prelevelRivals, width / 2, 214);
 
-  const rivalCount = stage.rivals.length;
-  stage.rivals.forEach((rk, i) => {
-    const rx = width / 2 + (i - (rivalCount - 1) / 2) * 66;
-    drawMiniBirdAvatar(ctx, rx, 248, 16, rk);
+  const shownRivals = preStage.rivals.slice(0, 5);
+  const rivalCount = shownRivals.length;
+  const rStep = rivalCount > 3 ? 52 : 66;
+  shownRivals.forEach((rk, i) => {
+    const rx = width / 2 + (i - (rivalCount - 1) / 2) * rStep;
+    drawMiniBirdAvatar(ctx, rx, 248, rivalCount > 3 ? 13 : 16, rk);
     ctx.fillStyle = COMIC_PALETTE.outline;
-    ctx.font = '800 11px sans-serif';
-    ctx.fillText(RIVAL_NAMES[rk], rx, 274);
+    ctx.font = '800 10.5px sans-serif';
+    ctx.fillText(
+      preStage.bossKind === 'big_white' && i === 0 ? '白胖老大' : RIVAL_NAMES[rk],
+      rx,
+      274,
+    );
   });
 
   // Bad-deeds star checklist
@@ -248,8 +277,8 @@ export function drawTitleOverlay(
 
   const goals = [
     '★  抢先霸占到 100 获胜',
-    `★★ 中暴喷不超过 1 次（高分 ${stage.starThresholds[1]}+）`,
-    `★★★ 全程压制对手（极速制霸）`,
+    `★★ ${campLevelDef.goals[0]}`,
+    `★★★ ${campLevelDef.goals[1]}`,
   ];
   goals.forEach((g, idx) => {
     ctx.fillStyle = COMIC_PALETTE.outline;
@@ -346,8 +375,9 @@ export function drawResultOverlay(
   const stars = match.mode === 'stage' ? evaluateStageStars(match, stage) : 0;
   const stageCleared = match.mode === 'stage' && stars >= 1;
   const wonRace = didPlayerWinRace(match);
+  const campIdx = stage.campaignIndex ?? match.stageId;
   const hasNextStage =
-    (stageCleared && match.stageId < 4) ||
+    (stageCleared && campIdx < 24) ||
     (match.mode === 'tutorial' && wonRace);
   const maxRivalCtrl = getMaxRivalControl(match);
 
@@ -382,7 +412,7 @@ export function drawResultOverlay(
           ? `教学 ${match.stageId} 通关！`
           : '再试一次吧！'
         : wonRace
-          ? `第 ${match.stageId} 关制霸成功！`
+          ? `${stage.shortName} 制霸成功！`
           : match.endReason === 'rival_full'
             ? '被对手抢先满 100！'
             : '时间到，惜败！';
@@ -514,7 +544,7 @@ export function drawResultOverlay(
         ? match.stageId < 3
           ? `进入教学 ${match.stageId + 1} ▶`
           : '进入第 1 关 ▶'
-        : `下一关：第 ${match.stageId + 1} 关 ▶`,
+        : `下一关：${getCampaignLevel(campIdx + 1).shortName} ▶`,
       '900 16px sans-serif',
     );
   }

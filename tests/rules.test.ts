@@ -1069,4 +1069,14 @@ describe('Stage progression, stars, and storage adapter', () => {
     }
     expect(airWorld.player.vx).toBeLessThan(60);
   });
+
+  it('provides 24 campaign levels (3 chapters x 8) with 3 Bosses and valid stage configs', () => {
+    for (let idx = 1; idx <= 24; idx++) {
+      const world = new PigeonFountainWorld('stage', 1, tuning, 100 + idx, idx);
+      expect(world.stage.campaignIndex).toBe(idx);
+      if (idx === 8) expect(world.stage.bossKind).toBe('big_white');
+      if (idx === 16) expect(world.stage.bossKind).toBe('sparrow_gang');
+      if (idx === 24) expect(world.stage.bossKind).toBe('pigeon_king');
+    }
+  });
 });

@@ -1,9 +1,10 @@
 import type { StageId } from '../platform/storage';
 
 export type AiArchetype = 'white_pigeon' | 'sparrow' | 'red_crest';
-export type AiTier = 1 | 2 | 3;
+export type AiTier = 1 | 2 | 3 | 4 | 5;
 export type PropKind = 'cup_tower' | 'melon_stall' | 'balloon_cart' | 'coffee_rack';
 export type StageThemeId = 'neighborhood' | 'park' | 'commercial' | 'carnival';
+export type BossKind = 'big_white' | 'sparrow_gang' | 'pigeon_king';
 
 export interface StagePropPlacement {
   readonly id: string;
@@ -20,6 +21,7 @@ export interface StagePropPlacement {
 
 export interface StageConfig {
   readonly id: StageId | 'endless';
+  readonly campaignIndex?: number;
   readonly title: string;
   readonly shortName: string;
   readonly subtitle: string;
@@ -38,6 +40,10 @@ export interface StageConfig {
   readonly waveMode: boolean;
   readonly cornEnabled: boolean;
   readonly propRespawnSec: number | null;
+  readonly lowGravity?: boolean;
+  readonly movingNozzleSlot?: number | null;
+  readonly photoFlashEnabled?: boolean;
+  readonly bossKind?: BossKind;
   readonly rivals: readonly AiArchetype[];
   readonly aiTiers: readonly AiTier[];
   readonly props: readonly StagePropPlacement[];
@@ -229,6 +235,26 @@ export const tuning = {
       contestBumpThresholdSec: 0.5,
       bumpCooldownSec: 1.2,
       bumpKnockbackSpeed: 335,
+      canPlug: true,
+      avoidPlayerPlug: true,
+    },
+    4: {
+      reactionDelaySec: 0.18,
+      fleeSurgeWarn: true,
+      seekWarning: true,
+      contestBumpThresholdSec: 0.42,
+      bumpCooldownSec: 1.1,
+      bumpKnockbackSpeed: 345,
+      canPlug: true,
+      avoidPlayerPlug: true,
+    },
+    5: {
+      reactionDelaySec: 0.14,
+      fleeSurgeWarn: true,
+      seekWarning: true,
+      contestBumpThresholdSec: 0.35,
+      bumpCooldownSec: 1.0,
+      bumpKnockbackSpeed: 355,
       canPlug: true,
       avoidPlayerPlug: true,
     },

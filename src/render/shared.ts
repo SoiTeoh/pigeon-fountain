@@ -43,12 +43,21 @@ export const HOME_UI = {
   navEndlessBtn: { x: 146, y: 562, w: 98, h: 46, r: 14 },
   navTutorialBtn: { x: 258, y: 562, w: 98, h: 46, r: 14 },
   mapCard: { x: 22, y: 56, w: 346, h: 528, r: 22 },
-  mapBackBtn: { x: 36, y: 74, w: 76, h: 32, r: 10 },
+  mapBackBtn: { x: 36, y: 72, w: 74, h: 32, r: 10 },
+  mapChapterTabs: [
+    { chapter: 1 as const, label: '1.街角', x: 36, y: 114, w: 102, h: 32, r: 10 },
+    { chapter: 2 as const, label: '2.公园', x: 144, y: 114, w: 102, h: 32, r: 10 },
+    { chapter: 3 as const, label: '3.商业街', x: 252, y: 114, w: 102, h: 32, r: 10 },
+  ] as const,
   mapNodes: [
-    { id: 1 as StageId, x: 108, y: 472, r: 34 },
-    { id: 2 as StageId, x: 274, y: 376, r: 34 },
-    { id: 3 as StageId, x: 112, y: 274, r: 34 },
-    { id: 4 as StageId, x: 266, y: 176, r: 36 },
+    { indexInChapter: 1, x: 86, y: 500, r: 26 },
+    { indexInChapter: 2, x: 196, y: 472, r: 26 },
+    { indexInChapter: 3, x: 300, y: 432, r: 26 },
+    { indexInChapter: 4, x: 224, y: 366, r: 26 },
+    { indexInChapter: 5, x: 96, y: 326, r: 26 },
+    { indexInChapter: 6, x: 186, y: 266, r: 26 },
+    { indexInChapter: 7, x: 296, y: 234, r: 26 },
+    { indexInChapter: 8, x: 195, y: 188, r: 30 },
   ] as const,
   preCard: { x: 24, y: 92, w: 342, h: 456, r: 22 },
   preBackBtn: { x: 40, y: 110, w: 86, h: 32, r: 10 },
@@ -64,6 +73,8 @@ export interface PolaroidSnapshot {
 export interface RenderExtra {
   readonly screenMode: ScreenMode;
   readonly homeSubView?: HomeSubView;
+  readonly mapChapter?: 1 | 2 | 3;
+  readonly selectedCampaignLevel?: number;
   readonly gameMode: GameMode;
   readonly selectedStageId: StageId;
   readonly progress: PlayerProgress;
