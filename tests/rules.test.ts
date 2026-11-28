@@ -1207,4 +1207,76 @@ describe('Stage progression, stars, and storage adapter', () => {
     expect(evalRes.stars).toBe(3);
     expect(evalRes.goalResults).toEqual([true, true]);
   });
+
+  it('supports M3-3 dynamic difficulty: consecutiveLosses tracking, +0.08s AI delay, and 1.25x assist boost', () => {
+    // 1. +0.08s reaction delay keeps AI from fleeing at base delaySec, then flees once delaySec + 0.08 elapses
+    const nozzles: FountainSlotState[] = [
+      { slotIndex: 0, x: 105, phase: 'SURGE_WARN', phaseTimerSec: 0.5, style: 'bubble', tiltDeg: 0, lateralDir: 0, lateralStrength: 0, lateralTimerSec: 0, willSurge: true },
+    ];
+    const baseDelay = tuning.aiTiers[2].reactionDelaySec;
+    const heldByBonus = decideAiMove(
+      {
+        archetype: 'white_pigeon',
+        tier: 2,
+        birdIndex: 0,
+        aiX: 105,
+        playerX: 300,
+        nozzles,
+        stunTimerSec: 0,
+        surgeReactElapsedSec: baseDelay,
+        redCrestState: 'idle',
+        redCrestTimerSec: 0,
+        redCrestCooldownSec: 0,
+        redCrestDir: 1,
+        elapsedSec: 5,
+        dtSec: 1 / 60,
+        aiReactionDelayBonusSec: tuning.assist.dynamicDelayBonusSec,
+      },
+      tuning,
+    );
+    expect(heldByBonus.intent).toBe('contest');
+
+    const fleesAfterBonus = decideAiMove(
+      {
+        archetype: 'white_pigeon',
+        tier: 2,
+        birdIndex: 0,
+        aiX: 105,
+        playerX: 300,
+        nozzles,
+        stunTimerSec: 0,
+        surgeReactElapsedSec: baseDelay + tuning.assist.dynamicDelayBonusSec,
+        redCrestState: 'idle',
+        redCrestTimerSec: 0,
+        redCrestCooldownSec: 0,
+        redCrestDir: 1,
+        elapsedSec: 5,
+        dtSec: 1 / 60,
+        aiReactionDelayBonusSec: tuning.assist.dynamicDelayBonusSec,
+      },
+      tuning,
+    );
+    expect(fleesAfterBonus.intent).toBe('flee');
+
+    // 2. Assist enabled boosts player control gain & bump knockback by 1.25x
+    const normWorld = new PigeonFountainWorld('stage', 1, tuning, 123, 1, { assistEnabled: false });
+    const assistWorld = new PigeonFountainWorld('stage', 1, tuning, 123, 1, { assistEnabled: true });
+    expect(assistWorld.assistEnabled).toBe(true);
+    const activeNozzleX = normWorld.stage.nozzleXs[1];
+    normWorld.match = {
+      ...normWorld.match,
+      nozzles: normWorld.match.nozzles.map((n, i) => (i === 1 ? { ...n, phase: 'ACTIVE', phaseTimerSec: 5 } : n)),
+    };
+    assistWorld.match = {
+      ...assistWorld.match,
+      nozzles: assistWorld.match.nozzles.map((n, i) => (i === 1 ? { ...n, phase: 'ACTIVE', phaseTimerSec: 5 } : n)),
+    };
+    normWorld.player.x = activeNozzleX;
+    assistWorld.player.x = activeNozzleX;
+    normWorld.rivals[0].x = 50;
+    assistWorld.rivals[0].x = 50;
+    normWorld.step({ moveDir: 0, bumpPressed: false, jumpPressed: false }, tuning.loop.fixedDtMs);
+    assistWorld.step({ moveDir: 0, bumpPressed: false, jumpPressed: false }, tuning.loop.fixedDtMs);
+    expect(assistWorld.match.playerControl).toBeGreaterThan(normWorld.match.playerControl * 1.2);
+  });
 });

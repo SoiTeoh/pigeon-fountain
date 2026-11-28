@@ -321,6 +321,24 @@ export function drawGameFrame(
       ctx.fillText(STRINGS_ZH.hud.lowGravityBadge, t.view.width / 2, badgeY + 10);
       ctx.restore();
     }
+
+    if (world.assistEnabled) {
+      const assistY =
+        (world.match.photoFlashSec ?? 0) > 0 || world.stage.lowGravity ? badgeY + 26 : badgeY;
+      ctx.save();
+      ctx.fillStyle = '#FEF08A';
+      roundRect(ctx, t.view.width / 2 - 64, assistY, 128, 20, 10);
+      ctx.fill();
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.fillStyle = COMIC_PALETTE.outline;
+      ctx.font = '900 10.5px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(STRINGS_ZH.hud.assistActive, t.view.width / 2, assistY + 10);
+      ctx.restore();
+    }
   }
 
   if (extra.debug) {

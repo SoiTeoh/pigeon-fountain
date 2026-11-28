@@ -110,6 +110,7 @@ async function main(): Promise<void> {
   let safeTopPx = 0;
   let camera = createInitialCameraState(activeTuning);
   let homeSubView: HomeSubView = 'home';
+  let assistActive = false;
 
   function measureSafeTopPx(): number {
     try {
@@ -170,21 +171,50 @@ async function main(): Promise<void> {
     replayRecorder = null;
   }
 
+  function skipCampaignLevel(campIdx: number): void {
+    const nextIdx = Math.min(24, campIdx + 1);
+    if (progress.unlockedCampaignLevel < nextIdx) {
+      progress = {
+        ...progress,
+        unlockedCampaignLevel: nextIdx,
+      };
+      writeProgress(progress);
+    }
+    assistActive = false;
+    selectedCampaignLevel = nextIdx;
+    selectedStageId = Math.min(4, Math.ceil(nextIdx / 8)) as StageId;
+    mapChapter = (Math.ceil(nextIdx / 8) as 1 | 2 | 3) || 1;
+    homeSubView = 'prelevel';
+    syncPreviewWorld();
+    sceneManager.transitionTo('title');
+  }
+
   function startNewGame(
     mode: GameMode = gameMode,
     stageId: StageId = selectedStageId,
     campaignIdx: number = selectedCampaignLevel,
+    enableAssist = assistActive,
   ): void {
     sound.unlock();
     gameMode = mode;
     selectedStageId = stageId;
+    let aiReactionDelayBonusSec = 0;
+    let useAssist = false;
     if (mode === 'stage') {
       selectedCampaignLevel = Math.max(1, Math.min(24, Math.round(campaignIdx)));
       mapChapter = (Math.ceil(selectedCampaignLevel / 8) as 1 | 2 | 3) || 1;
+      const losses = progress.consecutiveLosses[selectedCampaignLevel] ?? 0;
+      if (losses >= 2) {
+        aiReactionDelayBonusSec = activeTuning.assist.dynamicDelayBonusSec;
+      }
+      useAssist = losses >= 3 && enableAssist;
     }
     const matchSeed = generateRandomSeed();
     const campArg = mode === 'stage' ? selectedCampaignLevel : undefined;
-    world = new PigeonFountainWorld(mode, stageId, activeTuning, matchSeed, campArg);
+    world = new PigeonFountainWorld(mode, stageId, activeTuning, matchSeed, campArg, {
+      aiReactionDelayBonusSec,
+      assistEnabled: useAssist,
+    });
     replayRecorder = new ReplayRecorder(mode, stageId, matchSeed);
     soakAudioAcc = 0;
     plugAudioAcc = 0;
@@ -307,12 +337,24 @@ async function main(): Promise<void> {
       // prelevel
       if (hitRect(opt, HOME_UI.preBackBtn)) {
         sound.playUiClick();
+        assistActive = false;
         homeSubView = 'map';
+        return;
+      }
+      const lossesPre = progress.consecutiveLosses[selectedCampaignLevel] ?? 0;
+      if (lossesPre >= 3 && hitRect(opt, HOME_UI.preAssistBtn)) {
+        sound.playUiClick();
+        assistActive = !assistActive;
+        return;
+      }
+      if (lossesPre >= 3 && selectedCampaignLevel < 24 && hitRect(opt, HOME_UI.preSkipBtn)) {
+        sound.playUiClick();
+        skipCampaignLevel(selectedCampaignLevel);
         return;
       }
       if (hitRect(opt, HOME_UI.preStartBtn)) {
         sound.playUiClick();
-        startNewGame('stage', selectedStageId, selectedCampaignLevel);
+        startNewGame('stage', selectedStageId, selectedCampaignLevel, assistActive);
       }
       return;
     }
@@ -367,10 +409,24 @@ async function main(): Promise<void> {
       const rightBtn = hasNext ? ui.secondaryRightBtn : ui.soloRightBtn;
       if (hitRect(opt, leftBtn)) {
         sound.playUiClick();
-        startNewGame(gameMode, selectedStageId, selectedCampaignLevel);
+        startNewGame(gameMode, selectedStageId, selectedCampaignLevel, assistActive);
       } else if (hitRect(opt, rightBtn)) {
         sound.playUiClick();
         returnToHome();
+      } else if (
+        world.match.mode === 'stage' &&
+        !didPlayerWinRace(world.match) &&
+        (progress.consecutiveLosses[campIdx] ?? 0) >= 3 &&
+        campIdx < 24
+      ) {
+        if (hitRect(opt, HOME_UI.resultAssistBtn)) {
+          sound.playUiClick();
+          assistActive = true;
+          startNewGame('stage', selectedStageId, campIdx, true);
+        } else if (hitRect(opt, HOME_UI.resultSkipBtn)) {
+          sound.playUiClick();
+          skipCampaignLevel(campIdx);
+        }
       }
       return;
     }
@@ -749,13 +805,17 @@ async function main(): Promise<void> {
       } else if (world.match.mode === 'stage') {
         const campIdx = world.stage.campaignIndex ?? world.match.stageId;
         const campLevel = getCampaignLevel(campIdx);
+        const won = didPlayerWinRace(world.match);
         const { stars } = evaluateCampaignStars(world.match, world.stage, campLevel.goalDefs);
+        if (won) {
+          assistActive = false;
+        }
         progress = applyCampaignCompletion(
           progress,
           campIdx,
           Math.round(world.match.playerControl),
           stars,
-          didPlayerWinRace(world.match),
+          won,
         );
       } else {
         progress = applyEndlessCompletion(progress, world.match.score);
@@ -826,6 +886,7 @@ async function main(): Promise<void> {
         camera,
         snapshot: worstSnapshot,
         resultAnimSec,
+        assistActive,
       },
       activeTuning,
     );

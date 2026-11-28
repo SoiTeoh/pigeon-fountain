@@ -1,4 +1,5 @@
 import { tuning } from '../src/config/tuning';
+import { getCampaignLevel } from '../src/content/levels/campaign';
 import { mulberry32 } from '../src/core/rng';
 import { didPlayerWinRace, getMaxRivalControl } from '../src/game/rules';
 import { PigeonFountainWorld } from '../src/game/world';
@@ -83,42 +84,54 @@ function decideBotInput(
   // Expert: if holding plug, release after 0.65s to claim reward water & blast adjacent rival
   if (bot === 'expert' && world.plug.activeSlotIndex !== null) {
     if (world.plug.holdSec >= tuning.plug.adjacentSurgeThresholdSec + 0.05) {
-      const leaveDir: -1 | 1 = world.player.x >= 195 ? -1 : 1;
+      const plugged = nozzles[world.plug.activeSlotIndex];
+      const leaveDir: -1 | 1 = plugged && px <= plugged.x ? 1 : -1;
       return { moveDir: leaveDir, bumpPressed: false, jumpPressed: false };
     }
     return { moveDir: 0, bumpPressed: false, jumpPressed: false };
   }
 
-  // Expert: jump & slam onto adjacent IDLE/WARNING nozzle when rival sits on ACTIVE and no free ACTIVE is available
+  // Expert: only plug when adjacent rival sits on ACTIVE >= 1.35s, no free ACTIVE/imminent WARNING exists, and net gain > ~1.5s cost
   if (bot === 'expert' && world.plug.cooldownSec <= 0) {
-    if (world.player.airborne && mem.jumpWaitForPlug && world.player.vy > -60) {
+    if (world.player.airborne && mem.jumpWaitForPlug && world.player.vy > -220) {
       mem.jumpWaitForPlug = false;
       return { moveDir: 0, bumpPressed: false, jumpPressed: false, slamPressed: true };
     }
-    const freeActive = nozzles.some(
+    const freeActiveOrSoon = nozzles.some(
       (n) =>
-        n.phase === 'ACTIVE' &&
+        (n.phase === 'ACTIVE' || (n.phase === 'WARNING' && n.phaseTimerSec <= 0.65)) &&
         !world.rivals.some(
           (r) => !r.airborne && r.respawnTimerSec <= 0 && Math.abs(r.x - n.x) <= tuning.fountain.coreRadiusPx + 8,
         ),
     );
-    if (!freeActive && !world.player.airborne && world.player.jumpCooldownSec <= 0) {
+    const hasRewardBoostNow = nozzles.some(
+      (n) => n.phase === 'ACTIVE' && n.plugRewardOwner === 'player' && (n.plugRewardTimerSec ?? 0) > 0,
+    );
+    if (
+      !world.stage.lowGravity &&
+      !freeActiveOrSoon &&
+      !hasRewardBoostNow &&
+      !world.player.airborne &&
+      world.player.jumpCooldownSec <= 0
+    ) {
       const rivalActive = nozzles.find(
         (n) =>
           n.phase === 'ACTIVE' &&
+          n.phaseTimerSec >= 1.8 &&
           world.rivals.some((r) => !r.airborne && r.respawnTimerSec <= 0 && Math.abs(r.x - n.x) <= tuning.fountain.coreRadiusPx + 6),
       );
       if (rivalActive) {
+        const plugRange = 22;
         const plugSpot = nozzles.find(
           (n) =>
-            (n.phase === 'IDLE' || n.phase === 'WARNING') &&
+            n.phase === 'IDLE' &&
             Math.abs(n.slotIndex - rivalActive.slotIndex) === 1 &&
-            Math.abs(n.x - px) <= 85,
+            Math.abs(n.x - px) <= plugRange,
         );
         if (plugSpot) {
-          const targetX = plugSpot.x + mem.plugOffsetPx;
+          const targetX = plugSpot.x + mem.plugOffsetPx * 0.2;
           const dx = targetX - px;
-          if (Math.abs(dx) <= 6) {
+          if (Math.abs(dx) <= 10) {
             mem.jumpWaitForPlug = true;
             return { moveDir: 0, bumpPressed: false, jumpPressed: true };
           }
@@ -163,7 +176,7 @@ function decideBotInput(
   };
 }
 
-function runBatch(stageId: StageId, bot: BotKind, count: number) {
+function runBatch(stageId: StageId, bot: BotKind, count: number, campaignIdx?: number) {
   let wins = 0;
   let reached100 = 0;
   let totalPlugs = 0;
@@ -174,9 +187,9 @@ function runBatch(stageId: StageId, bot: BotKind, count: number) {
   const dtSec = dtMs / 1000;
 
   for (let i = 0; i < count; i++) {
-    const seed = 100000 + stageId * 10000 + i * 7919 + (bot === 'sitter' ? 1 : bot === 'normal' ? 2 : 3);
+    const seed = 100000 + (campaignIdx ?? stageId) * 10000 + i * 7919 + (bot === 'sitter' ? 1 : bot === 'normal' ? 2 : 3);
     const botRng = mulberry32(seed ^ 0x9e3779b9);
-    const world = new PigeonFountainWorld('stage', stageId, tuning, seed);
+    const world = new PigeonFountainWorld('stage', stageId, tuning, seed, campaignIdx);
     const mem: BotMemory = {
       surgeReactSec: 0,
       jumpWaitForPlug: false,
@@ -214,7 +227,7 @@ function runBatch(stageId: StageId, bot: BotKind, count: number) {
   };
 }
 
-const MATCHES_PER_CELL = 300;
+const MATCHES_PER_CELL = 150;
 const stages: StageId[] = [1, 2, 3, 4];
 const bots: BotKind[] = ['sitter', 'normal', 'expert'];
 
@@ -243,8 +256,22 @@ const s1 = byStage[1];
 const s2 = byStage[2];
 const s3 = byStage[3];
 const s4 = byStage[4];
-console.log('\nTarget Checks:');
+console.log('\nLegacy Target Checks:');
 console.log(`Stage 1: sitter(60-75%)=${s1.sitter.winRate.toFixed(1)}%, normal(>=95%)=${s1.normal.winRate.toFixed(1)}%, normalSec(30-50s)=${s1.normal.avgSec.toFixed(1)}s`);
 console.log(`Stage 2: sitter(40-60%)=${s2.sitter.winRate.toFixed(1)}%, normal(>=90%)=${s2.normal.winRate.toFixed(1)}%, expert>=normal=${s2.expert.winRate.toFixed(1)}%>=${s2.normal.winRate.toFixed(1)}%, normalSec(30-50s)=${s2.normal.avgSec.toFixed(1)}s`);
 console.log(`Stage 3: sitter(20-40%)=${s3.sitter.winRate.toFixed(1)}%, normal(75-90%)=${s3.normal.winRate.toFixed(1)}%, expert>=normal+5=${s3.expert.winRate.toFixed(1)}%>=${(s3.normal.winRate + 5).toFixed(1)}%, normalSec(30-50s)=${s3.normal.avgSec.toFixed(1)}s`);
-console.log(`Stage 4: normal(60-80%)=${s4.normal.winRate.toFixed(1)}%, expert>=normal+10=${s4.expert.winRate.toFixed(1)}%>=${(s4.normal.winRate + 10).toFixed(1)}%, normalSec(30-50s)=${s4.normal.avgSec.toFixed(1)}s`);
+console.log(`Stage 4: normal(60-80%)=${s4.normal.winRate.toFixed(1)}%, expert>=normal+10=${s4.expert.winRate.toFixed(1)}%>=${(s4.normal.winRate + 10).toFixed(1)}%, reached100=${s4.normal.reached100Rate.toFixed(1)}%, normalSec=${s4.normal.avgSec.toFixed(1)}s`);
+
+console.log('\nCampaign Sawtooth Checks (100 matches per cell):');
+console.log('| 关卡 | normal胜率 | expert胜率 | sitter胜率 | normal时长 | expert堵泉 |');
+console.log('| --- | --- | --- | --- | --- | --- |');
+const sampleCampaignIndices = [1, 3, 6, 8, 9, 13, 16, 18, 22, 24];
+for (const idx of sampleCampaignIndices) {
+  const lvl = getCampaignLevel(idx);
+  const sit = runBatch(1, 'sitter', 100, idx);
+  const norm = runBatch(1, 'normal', 100, idx);
+  const exp = runBatch(1, 'expert', 100, idx);
+  console.log(
+    `| ${lvl.shortName} | ${norm.winRate.toFixed(1)}% | ${exp.winRate.toFixed(1)}% | ${sit.winRate.toFixed(1)}% | ${norm.avgSec.toFixed(1)}s | ${exp.avgPlugs.toFixed(2)} |`,
+  );
+}

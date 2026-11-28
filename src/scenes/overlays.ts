@@ -263,29 +263,61 @@ export function drawTitleOverlay(
     );
   });
 
-  // Bad-deeds star checklist
+  // Bad-deeds star checklist + Dynamic Difficulty options (>=2 losses slow AI, >=3 losses assist/skip)
+  const campIdxPre = campLevelDef.campaignIndex ?? 1;
+  const losses = extra.progress.consecutiveLosses[campIdxPre] ?? 0;
+  const showAssistRow = losses >= 3;
+  const boxH = showAssistRow ? 104 : 142;
+
   ctx.fillStyle = '#F8FAFC';
   ctx.strokeStyle = COMIC_PALETTE.outline;
   ctx.lineWidth = 2.5;
-  roundRect(ctx, 44, 304, width - 88, 142, 14);
+  roundRect(ctx, 44, 304, width - 88, boxH, 14);
   ctx.fill();
   ctx.stroke();
 
   ctx.fillStyle = '#64748B';
   ctx.font = '800 11px sans-serif';
-  ctx.fillText(STRINGS_ZH.title.prelevelGoals, width / 2, 322);
+  ctx.fillText(STRINGS_ZH.title.prelevelGoals, width / 2, 320);
 
   const goals = [
     '★  抢先霸占到 100 获胜',
     `★★ ${campLevelDef.goals[0]}`,
     `★★★ ${campLevelDef.goals[1]}`,
   ];
+  const lineStep = showAssistRow ? 22 : 28;
   goals.forEach((g, idx) => {
     ctx.fillStyle = COMIC_PALETTE.outline;
-    ctx.font = '800 12px sans-serif';
+    ctx.font = showAssistRow ? '800 11px sans-serif' : '800 12px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(g, 60, 352 + idx * 30, card.w - 64);
+    ctx.fillText(g, 58, 344 + idx * lineStep, card.w - 60);
   });
+
+  if (losses === 2) {
+    ctx.fillStyle = '#0369A1';
+    ctx.font = '800 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(STRINGS_ZH.assist.delayNotice, width / 2, 430);
+  }
+
+  if (showAssistRow) {
+    drawStickerButton(
+      ctx,
+      HOME_UI.preAssistBtn,
+      extra.assistActive ? COMIC_PALETTE.accentMustard : '#E0F2FE',
+      COMIC_PALETTE.outline,
+      extra.assistActive ? '✅ 胖大肥已上阵' : STRINGS_ZH.assist.callAssistBtn,
+      '800 12px "PingFang SC", "Microsoft YaHei", sans-serif',
+    );
+    drawStickerButton(
+      ctx,
+      HOME_UI.preSkipBtn,
+      '#F1F5F9',
+      COMIC_PALETTE.outline,
+      STRINGS_ZH.assist.skipLevelBtn,
+      '800 12px "PingFang SC", "Microsoft YaHei", sans-serif',
+    );
+  }
 
   drawStickerButton(
     ctx,
@@ -612,6 +644,30 @@ export function drawResultOverlay(
     STRINGS_ZH.result.home,
     hasNextStage ? '800 14px sans-serif' : '900 15px sans-serif',
   );
+
+  if (
+    match.mode === 'stage' &&
+    !wonRace &&
+    (extra.progress.consecutiveLosses[campIdx] ?? 0) >= 3 &&
+    campIdx < 24
+  ) {
+    drawStickerButton(
+      ctx,
+      HOME_UI.resultAssistBtn,
+      '#FEF08A',
+      COMIC_PALETTE.outline,
+      '🐷 助阵再战',
+      '800 12.5px "PingFang SC", "Microsoft YaHei", sans-serif',
+    );
+    drawStickerButton(
+      ctx,
+      HOME_UI.resultSkipBtn,
+      '#E0F2FE',
+      COMIC_PALETTE.outline,
+      STRINGS_ZH.assist.skipLevelBtn,
+      '800 12.5px "PingFang SC", "Microsoft YaHei", sans-serif',
+    );
+  }
 
   ctx.restore();
 

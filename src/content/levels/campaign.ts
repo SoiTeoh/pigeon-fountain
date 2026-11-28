@@ -40,9 +40,11 @@ function buildCampaignLevels(): readonly LevelDef[] {
       const campaignIndex = (ch.chapter - 1) * 8 + i;
       const isBoss = i === 8;
       // Sawtooth difficulty curve per chapter: dips at L1, climbs to mid-peak, dips slightly at L6, spikes at L8 Boss
-      const sawOffset = i === 1 ? -0.15 : i === 5 ? -0.05 : i === 8 ? 0.25 : (i - 1) * 0.05;
-      const baseMult = ch.chapter === 1 ? 0.95 : ch.chapter === 2 ? 1.1 : 1.25;
-      const rivalGainMult = Number((baseMult + sawOffset).toFixed(2));
+      const sawOffset = i === 1 ? -0.15 : i === 5 ? -0.05 : i === 8 ? 0.35 : (i - 1) * 0.06;
+      const baseMult = ch.chapter === 1 ? 1.45 : ch.chapter === 2 ? 1.6 : 1.72;
+      const rivalGainMult = Number(
+        (isBoss && ch.chapter === 1 ? 1.05 : isBoss && ch.chapter === 2 ? 3.25 : baseMult + sawOffset).toFixed(2),
+      );
 
       const rules: RuleModifier[] = [];
       if (ch.chapter === 2 && i >= 5 && i <= 7) rules.push('low_gravity');
@@ -120,7 +122,8 @@ function buildCampaignLevels(): readonly LevelDef[] {
         pattern: ch.chapter === 3 ? 'wave' : 'standard',
         rivals,
         rivalGainMult,
-        dualActiveChance: ch.chapter === 1 ? (i >= 5 ? 0.3 : 0) : ch.chapter === 2 ? 0.5 : 0.72,
+        dualActiveChance:
+          ch.chapter === 1 ? (isBoss ? 0.26 : i >= 5 ? 0.3 : 0) : ch.chapter === 2 ? (isBoss ? 0.86 : 0.52) : 0.72,
         angledChance: ch.chapter === 1 ? 0 : ch.chapter === 2 ? 0.4 : 0.5,
         surgeChanceEarly: 0.35 + ch.chapter * 0.08,
         surgeChanceLate: 0.62 + ch.chapter * 0.08,

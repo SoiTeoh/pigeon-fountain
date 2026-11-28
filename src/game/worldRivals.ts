@@ -1,4 +1,4 @@
-import type { StageConfig, Tuning } from '../config/tuning';
+import type { BossKind, StageConfig, Tuning } from '../config/tuning';
 import { decideAiMove } from './ai';
 import {
   checkPropHit,
@@ -91,6 +91,8 @@ export function stepRivalsMovement(
   dtSec: number,
   t: Tuning,
   gravMult = 1,
+  aiReactionDelayBonusSec = 0,
+  bossKind?: BossKind,
 ): { redCrestCharged: boolean; rivalBumpedPlayer: boolean } {
   let redCrestCharged = false;
   let rivalBumpedPlayer = false;
@@ -145,13 +147,15 @@ export function stepRivalsMovement(
           contestTimerSec: r.contestTimerSec,
           bumpCooldownSec: r.bumpCooldownSec,
           plugCooldownSec: r.plugCooldownSec,
-          playerPlugSlotIndex,
+          // Arrogant Big White Boss doesn't flee player plug traps so plug counter-play shines!
+          playerPlugSlotIndex: bossKind === 'big_white' && r.id === 0 ? null : playerPlugSlotIndex,
           redCrestState: r.redCrestState,
           redCrestTimerSec: r.redCrestTimerSec,
           redCrestCooldownSec: r.redCrestCooldownSec,
           redCrestDir: r.redCrestDir,
           elapsedSec: match.elapsedSec,
           dtSec,
+          aiReactionDelayBonusSec,
         },
         t,
       );
@@ -177,6 +181,7 @@ export function stepRivalsMovement(
         if (!player.airborne && Math.abs(player.x - r.x) <= t.pigeon.bumpReachPx) {
           rivalBumpedPlayer = true;
           player.vx = dir * tierSpec.bumpKnockbackSpeed;
+          player.knockbackTimerSec = 0.28;
           player.squashX = 0.78;
           player.squashY = 1.22;
           spawnParticleBurst(particles, fxRng, player.x, t.scene.groundY - 22, 6, 'feather_dark', '#334155', 60, 150);
@@ -277,6 +282,7 @@ export function resolveRivalInteractions(
         Math.abs(r.x - player.x) <= t.pigeon.radius + r.radius - 2
       ) {
         player.vx = r.redCrestDir * 310;
+        player.knockbackTimerSec = 0.28;
         player.squashX = 0.78;
         player.squashY = 1.24;
         r.redCrestState = 'idle';
@@ -291,13 +297,19 @@ export function resolveRivalInteractions(
       if (absDx < minSep) {
         const dir = dx >= 0 ? 1 : -1;
         const overlap = minSep - absDx;
-        const isBigWhiteBoss = stage.bossKind === 'big_white' && r.id === 1;
+        const isBigWhiteBoss = stage.bossKind === 'big_white' && r.id === 0;
         const playerPushing = player.vx * dir > 30;
         const rivalPushing = r.vx * -dir > 30;
-        const playerShare = isBigWhiteBoss ? 0.88 : playerPushing ? 0.2 : rivalPushing ? 0.32 : 0.4;
+        const playerShare = isBigWhiteBoss
+          ? playerPushing ? 0.52 : 0.76
+          : playerPushing ? 0.2 : rivalPushing ? 0.5 : 0.45;
         const rivalShare = 1 - playerShare;
-        const playerBounceMult = isBigWhiteBoss ? 1.45 : playerPushing ? 0.25 : rivalPushing ? 0.35 : 0.6;
-        const rivalBounceMult = isBigWhiteBoss ? 0.15 : playerPushing ? 1.75 : rivalPushing ? 1.25 : 1.1;
+        const playerBounceMult = isBigWhiteBoss
+          ? playerPushing ? 0.9 : 1.3
+          : playerPushing ? 0.25 : rivalPushing ? 0.85 : 0.65;
+        const rivalBounceMult = isBigWhiteBoss
+          ? playerPushing ? 0.6 : 0.25
+          : playerPushing ? 1.75 : rivalPushing ? 0.85 : 1.0;
 
         player.x -= dir * overlap * playerShare;
         r.x += dir * overlap * rivalShare;
@@ -375,6 +387,7 @@ function applyBumpHitToRivals(
   fxRng: () => number,
   t: Tuning,
   stage?: StageConfig,
+  bumpKnockbackMult = 1,
 ): void {
   for (const r of targets) {
     if (stage?.bossKind === 'big_white' && r.id === 0) {
@@ -390,7 +403,7 @@ function applyBumpHitToRivals(
           ? t.pigeon.whiteKnockbackMult
           : 1;
     const hitDir = r.x >= player.x - 10 ? dashDir : (-dashDir as -1 | 1);
-    r.vx = hitDir * t.pigeon.bumpKnockbackSpeed * knockMult;
+    r.vx = hitDir * t.pigeon.bumpKnockbackSpeed * knockMult * bumpKnockbackMult;
     r.stunTimerSec = t.pigeon.bumpStunSec;
     r.redCrestState = 'idle';
     r.redCrestTimerSec = 0;
@@ -413,6 +426,7 @@ export function performPlayerBump(
   fxRng: () => number,
   t: Tuning,
   stage?: StageConfig,
+  bumpKnockbackMult = 1,
 ): { bumpedHit: boolean; bumpedWhiff: boolean; shakeMagDelta: number } {
   player.bumpCooldownSec = t.pigeon.bumpCooldownSec;
   player.bumpAnimSec = 0.22;
@@ -444,7 +458,7 @@ export function performPlayerBump(
   player.squashY = 0.8;
 
   if (targets.length > 0) {
-    applyBumpHitToRivals(player, targets, dashDir, particles, floats, fxRng, t, stage);
+    applyBumpHitToRivals(player, targets, dashDir, particles, floats, fxRng, t, stage, bumpKnockbackMult);
     return { bumpedHit: true, bumpedWhiff: false, shakeMagDelta: 3 };
   }
   return { bumpedHit: false, bumpedWhiff: true, shakeMagDelta: 0 };
@@ -458,6 +472,7 @@ export function applyDashBumpCollision(
   fxRng: () => number,
   t: Tuning,
   stage?: StageConfig,
+  bumpKnockbackMult = 1,
 ): boolean {
   const hitRadius = t.pigeon.radius + 26;
   const targets = rivals.filter(
@@ -468,6 +483,6 @@ export function applyDashBumpCollision(
       Math.abs(r.x - player.x) <= hitRadius,
   );
   if (targets.length === 0) return false;
-  applyBumpHitToRivals(player, targets, player.facing, particles, floats, fxRng, t, stage);
+  applyBumpHitToRivals(player, targets, player.facing, particles, floats, fxRng, t, stage, bumpKnockbackMult);
   return true;
 }

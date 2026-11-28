@@ -23,6 +23,7 @@ export interface AiDecisionInput {
   readonly redCrestDir: -1 | 1;
   readonly elapsedSec: number;
   readonly dtSec?: number;
+  readonly aiReactionDelayBonusSec?: number;
 }
 
 export interface AiDecision {
@@ -182,7 +183,8 @@ export function decideAiMove(input: AiDecisionInput, t: Tuning = tuning): AiDeci
     const dangerNozzle = findBestNozzle(input, ['SURGE_WARN'], null, false);
     if (dangerNozzle && Math.abs(input.aiX - dangerNozzle.x) <= t.fountain.coreRadiusPx + 16) {
       const nextReact = input.surgeReactElapsedSec + dt;
-      if (nextReact >= tierSpec.reactionDelaySec) {
+      const delaySec = tierSpec.reactionDelaySec + (input.aiReactionDelayBonusSec ?? 0);
+      if (nextReact >= delaySec) {
         const fleeDir: -1 | 1 =
           input.aiX < dangerNozzle.x
             ? -1

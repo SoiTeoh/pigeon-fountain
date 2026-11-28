@@ -82,6 +82,7 @@ export interface MatchStepInput {
   readonly dtSec: number;
   readonly playerX: number;
   readonly playerAirborne: boolean;
+  readonly playerGainMult?: number;
   readonly rivals: readonly RivalPositionSample[];
 }
 

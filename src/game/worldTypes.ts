@@ -14,6 +14,7 @@ export interface PigeonBody {
   waddlePhase: number;
   squashX: number;
   squashY: number;
+  knockbackTimerSec?: number;
 }
 
 export interface PlugCallout {

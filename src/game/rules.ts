@@ -653,8 +653,9 @@ export function stepMatchState(
     const combo = computeComboMultiplier(playerHoldSec, t);
     if (combo > maxCombo) maxCombo = combo;
     const rateMult = computeControlRateMultiplier(combo, t);
+    const playerAssistMult = input.playerGainMult ?? 1;
     playerControl = clamp(
-      playerControl + t.control.baseGainPerSec * rateMult * playerPlugBoost * photoMult * dtSec,
+      playerControl + t.control.baseGainPerSec * rateMult * playerPlugBoost * photoMult * playerAssistMult * dtSec,
       0,
       t.control.maxControl,
     );

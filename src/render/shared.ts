@@ -61,7 +61,11 @@ export const HOME_UI = {
   ] as const,
   preCard: { x: 24, y: 92, w: 342, h: 456, r: 22 },
   preBackBtn: { x: 40, y: 110, w: 86, h: 32, r: 10 },
+  preAssistBtn: { x: 44, y: 416, w: 146, h: 36, r: 10 },
+  preSkipBtn: { x: 200, y: 416, w: 146, h: 36, r: 10 },
   preStartBtn: { x: 54, y: 466, w: 282, h: 56, r: 16 },
+  resultAssistBtn: { x: 52, y: 512, w: 158, h: 32, r: 10 },
+  resultSkipBtn: { x: 218, y: 512, w: 120, h: 32, r: 10 },
 } as const;
 
 export interface PolaroidSnapshot {
@@ -93,6 +97,7 @@ export interface RenderExtra {
   readonly camera?: CameraView;
   readonly snapshot?: PolaroidSnapshot | null;
   readonly resultAnimSec?: number;
+  readonly assistActive?: boolean;
 }
 
 export const COMIC_PALETTE = {

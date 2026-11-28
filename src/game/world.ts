@@ -11,10 +11,17 @@ import { createEmptyWorldEvents, createRivalBirds, type BonusPickup, type Floati
 
 export * from './worldTypes';
 
+export interface WorldOptions {
+  readonly aiReactionDelayBonusSec?: number;
+  readonly assistEnabled?: boolean;
+}
+
 export class PigeonFountainWorld {
   readonly t: Tuning;
   readonly stage: StageConfig;
   readonly seed: number;
+  readonly aiReactionDelayBonusSec: number;
+  readonly assistEnabled: boolean;
   match: MatchState;
   props: PropState[];
   plug: PlugState = createInitialPlugState();
@@ -53,9 +60,12 @@ export class PigeonFountainWorld {
     t: Tuning = tuning,
     seed?: number,
     campaignLevel?: number,
+    options: WorldOptions = {},
   ) {
     this.t = t;
     this.seed = seed !== undefined ? normalizeSeed(seed) : generateRandomSeed();
+    this.aiReactionDelayBonusSec = options.aiReactionDelayBonusSec ?? 0;
+    this.assistEnabled = options.assistEnabled ?? false;
     this.simRng = mulberry32(this.seed);
     this.fxRng = mulberry32(this.seed ^ 0xa5a5a5a5);
     this.stage = getStageForMatch(mode, stageId, campaignLevel);
@@ -78,6 +88,7 @@ export class PigeonFountainWorld {
       smugTimerSec: 0,
       isJumping: false,
       expression: 'smug',
+      knockbackTimerSec: 0,
     };
     this.rivals = createRivalBirds(this.stage, t);
 
@@ -143,6 +154,7 @@ export class PigeonFountainWorld {
     this.player.bumpAnimSec = Math.max(0, this.player.bumpAnimSec - dtSec);
     this.player.jumpCooldownSec = Math.max(0, this.player.jumpCooldownSec - dtSec);
     this.player.smugTimerSec = Math.max(0, this.player.smugTimerSec - dtSec);
+    this.player.knockbackTimerSec = Math.max(0, (this.player.knockbackTimerSec ?? 0) - dtSec);
 
     // Jump ("小跳")
     let jumped = false;
@@ -179,7 +191,10 @@ export class PigeonFountainWorld {
       }
     }
 
-    if (moveDir !== 0 && moveScale > 0) {
+    if ((this.player.knockbackTimerSec ?? 0) > 0 && !this.player.airborne) {
+      // Allow AI bump / Red Crest knockback impulse to slide briefly before player steering overrides it
+      this.player.vx -= this.player.vx * Math.min(1, 3.8 * dtSec);
+    } else if (moveDir !== 0 && moveScale > 0) {
       this.player.facing = moveDir;
       // Clear opposing momentum immediately on direction reversal so turning is instantaneous
       if (this.player.vx * moveDir < 0) {
@@ -213,7 +228,11 @@ export class PigeonFountainWorld {
       this.player.vx -= this.player.vx * Math.min(1, airBrake * dtSec);
     }
 
-    if (this.player.bumpAnimSec <= 0 && (!this.player.airborne || this.player.isJumping)) {
+    if (
+      (this.player.knockbackTimerSec ?? 0) <= 0 &&
+      this.player.bumpAnimSec <= 0 &&
+      (!this.player.airborne || this.player.isJumping)
+    ) {
       const maxSpd =
         moveDir !== 0 ? this.t.pigeon.playerMaxSpeed * moveScale : this.t.pigeon.playerMaxSpeed;
       this.player.vx = clamp(this.player.vx, -maxSpd, maxSpd);
@@ -238,6 +257,8 @@ export class PigeonFountainWorld {
       dtSec,
       this.t,
       gravMult,
+      this.aiReactionDelayBonusSec,
+      this.stage.bossKind,
     );
     const redCrestCharged = aiMoveRes.redCrestCharged;
     if (aiMoveRes.rivalBumpedPlayer) {
@@ -267,6 +288,7 @@ export class PigeonFountainWorld {
       }
     }
 
+    const assistBumpMult = this.assistEnabled ? this.t.assist.bumpKnockbackMult : 1;
     // Handle "肥臀猛顶" (Butt Bump)
     let bumpedHit = false;
     let bumpedWhiff = false;
@@ -279,6 +301,7 @@ export class PigeonFountainWorld {
         this.fxRng,
         this.t,
         this.stage,
+        assistBumpMult,
       );
       bumpedHit = bumpRes.bumpedHit;
       bumpedWhiff = bumpRes.bumpedWhiff;
@@ -297,6 +320,7 @@ export class PigeonFountainWorld {
         this.fxRng,
         this.t,
         this.stage,
+        assistBumpMult,
       )
     ) {
       bumpedHit = true;
@@ -640,6 +664,7 @@ export class PigeonFountainWorld {
         dtSec,
         playerX: this.player.x,
         playerAirborne: this.player.airborne,
+        playerGainMult: this.assistEnabled ? this.t.assist.controlGainMult : 1,
         rivals: this.rivals.map((r) => ({
           id: r.id,
           x: r.respawnTimerSec > 0 ? -999 : r.x,

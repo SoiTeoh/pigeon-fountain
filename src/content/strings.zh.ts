@@ -59,6 +59,13 @@ export const STRINGS_ZH = {
     photoFlashActive: '📸 网红拍照！涨条 ×2',
     lowGravityBadge: '🫧 低重力苏打喷泉',
     bossCantPush: '推不动！去堵泉！',
+    assistActive: '🐷 胖大肥助阵中！',
+  },
+  assist: {
+    delayNotice: '连败降难：AI 反应已放慢 +0.08s',
+    callAssistBtn: '🐷 胖大肥助阵',
+    assistOnBadge: '🐷 胖大肥助阵中（顶飞+25%·涨条加速）',
+    skipLevelBtn: '⏭ 跳过本关',
   },
   tutorial: {
     tut1Drag: '拖动 → 走过去',
