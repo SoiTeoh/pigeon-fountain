@@ -3,7 +3,7 @@ import { showKeyboardHints, STRINGS_ZH } from '../content/strings.zh';
 import { findPredictedPlugNozzle } from '../game/plug';
 import { computeControlRateMultiplier } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
-import { computeViewportLayout, roundRect, type RenderExtra } from './shared';
+import { COMIC_PALETTE, computeViewportLayout, roundRect, type RenderExtra } from './shared';
 
 export function drawCircleSkillButton(
   ctx: CanvasRenderingContext2D,
@@ -101,11 +101,17 @@ export function drawMiniBirdAvatar(
           : '#cbd5e1';
 
   ctx.fillStyle = bg;
-  ctx.strokeStyle = border;
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = 2.6;
   ctx.beginPath();
   ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(0, 0, Math.max(2, r - 2), 0, Math.PI * 2);
   ctx.stroke();
 
   if (kind === 'red_crest') {

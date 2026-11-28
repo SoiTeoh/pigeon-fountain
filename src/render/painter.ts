@@ -192,6 +192,9 @@ export function drawGameFrame(
           ? 1 - r.redCrestTimerSec / t.pigeon.redCrestChargeSec
           : 0,
       animTimeSec: extra.animTimeSec,
+      airborne: r.airborne,
+      sittingOnWater: onActive,
+      wetSlump: false,
     });
   }
 
@@ -222,6 +225,9 @@ export function drawGameFrame(
     stunned: false,
     redCrestChargeRatio: 0,
     animTimeSec: extra.animTimeSec,
+    airborne: world.player.airborne,
+    sittingOnWater: world.occupant === 'player',
+    wetSlump: playerLost,
   });
 
   if (playerLost) {

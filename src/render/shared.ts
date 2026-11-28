@@ -55,6 +55,23 @@ export interface RenderExtra {
   readonly camera?: CameraView;
 }
 
+export const COMIC_PALETTE = {
+  outline: '#2B2B3A',
+  outlineWidth: 3,
+  skyApricotTop: '#FFE4C4',
+  skyApricotBottom: '#FFF6EB',
+  fountainCyan: '#06B6D4',
+  fountainBright: '#38BDF8',
+  fountainFoam: '#ECFEFF',
+  warningTomato: '#EF4444',
+  accentMustard: '#FACC15',
+  accentBright: '#FDE047',
+  highlight: 'rgba(255, 255, 255, 0.38)',
+  surfaceWhite: '#FFFDF9',
+  inkDark: '#2B2B3A',
+  inkMuted: '#64748B',
+} as const;
+
 export interface ThemePalette {
   readonly skyTop: string;
   readonly skyBottom: string;
