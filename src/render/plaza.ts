@@ -3,7 +3,7 @@ import { STRINGS_ZH } from '../content/strings.zh';
 import type { FountainSlotState } from '../game/rules';
 import type { PigeonFountainWorld } from '../game/world';
 import { drawMiniBirdAvatar } from './hud';
-import { roundRect, THEME_PALETTES } from './shared';
+import { COMIC_PALETTE, roundRect, THEME_PALETTES } from './shared';
 
 export function drawButtIcon(
   ctx: CanvasRenderingContext2D,
@@ -101,8 +101,8 @@ export function drawPlazaBackground(
   ctx.save();
   ctx.translate(-cameraOffsetX * 0.25, 0);
   if (pal.isNight) {
-    // Twinkling stars & city skyline silhouette
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+    // Twinkling stars & distant skyline silhouettes with comic outlines
+    ctx.fillStyle = COMIC_PALETTE.accentBright;
     for (const [sx, sy, phase] of [
       [38, 78, 0.2],
       [112, 92, 1.4],
@@ -110,14 +110,15 @@ export function drawPlazaBackground(
       [274, 88, 0.9],
       [344, 74, 3.1],
     ]) {
-      const r = 1.4 + 0.8 * Math.sin(animTimeSec * 3.2 + phase);
+      const r = 1.6 + 0.8 * Math.sin(animTimeSec * 3.2 + phase);
       ctx.beginPath();
       ctx.arc(sx, sy, r, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Distant shops / neon buildings
-    ctx.fillStyle = stage.theme === 'carnival' ? '#1e1b4b' : '#334155';
+    ctx.fillStyle = stage.theme === 'carnival' ? '#312E81' : '#3B2D5C';
+    ctx.strokeStyle = COMIC_PALETTE.outline;
+    ctx.lineWidth = COMIC_PALETTE.outlineWidth;
     const buildings = [
       [-60, 96, 64],
       [14, 108, 66],
@@ -129,88 +130,118 @@ export function drawPlazaBackground(
     ];
     for (const [bx, bh, bw] of buildings) {
       ctx.fillRect(bx, groundY - 22 - bh, bw, bh);
+      ctx.strokeRect(bx, groundY - 22 - bh, bw, bh);
     }
   } else {
-    // Soft clouds
-    ctx.fillStyle = 'rgba(255,255,255,0.78)';
+    // Far pastel hills + sticker-style outlined clouds
+    ctx.fillStyle = stage.theme === 'park' ? '#BBF7D0' : '#FED7AA';
+    ctx.strokeStyle = COMIC_PALETTE.outline;
+    ctx.lineWidth = COMIC_PALETTE.outlineWidth;
+    ctx.beginPath();
+    ctx.moveTo(-120, groundY - 22);
+    ctx.quadraticCurveTo(60, groundY - 125, 220, groundY - 22);
+    ctx.quadraticCurveTo(340, groundY - 110, width + 120, groundY - 22);
+    ctx.fill();
+    ctx.stroke();
+
     const cloudShift = (animTimeSec * 8) % (width + 120);
     for (const [cx, cy, r] of [
-      [70, 108, 22],
-      [250, 86, 26],
+      [70, 108, 20],
+      [250, 86, 24],
     ]) {
       const x = ((cx + cloudShift) % (width + 120)) - 60;
+      ctx.fillStyle = COMIC_PALETTE.surfaceWhite;
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = 2.6;
       ctx.beginPath();
-      ctx.arc(x, cy, r, 0, Math.PI * 2);
-      ctx.arc(x + 20, cy + 4, r * 0.78, 0, Math.PI * 2);
-      ctx.arc(x - 18, cy + 5, r * 0.72, 0, Math.PI * 2);
+      ctx.arc(x - 16, cy + 4, r * 0.68, Math.PI * 0.5, Math.PI * 1.5);
+      ctx.arc(x, cy - 2, r * 0.92, Math.PI * 1.0, Math.PI * 2.0);
+      ctx.arc(x + 18, cy + 4, r * 0.72, Math.PI * 1.5, Math.PI * 0.5);
+      ctx.closePath();
       ctx.fill();
+      ctx.stroke();
     }
   }
   ctx.restore();
 
-  // Layer 2 (Mid): Shops, trees, balustrade (0.55x parallax)
+  // Layer 2 (Mid): Shops, trees, pavilion arch (0.55x parallax) with 3px #2B2B3A outlines
   ctx.save();
   ctx.translate(-cameraOffsetX * 0.55, 0);
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = COMIC_PALETTE.outlineWidth;
+  ctx.lineJoin = 'round';
   if (pal.isNight) {
     if (stage.theme === 'commercial') {
-      // Trendy cafe neon signs
-      ctx.fillStyle = 'rgba(244, 114, 182, 0.85)';
-      roundRect(ctx, 102, groundY - 118, 52, 18, 5);
+      ctx.fillStyle = '#F472B6';
+      roundRect(ctx, 100, groundY - 122, 56, 20, 6);
       ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 9px sans-serif';
+      ctx.stroke();
+      ctx.fillStyle = '#FFFDF9';
+      ctx.font = '900 10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('CAFE', 128, groundY - 106);
+      ctx.fillText('CAFE', 128, groundY - 108);
 
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.85)';
-      roundRect(ctx, 266, groundY - 110, 48, 18, 5);
+      ctx.fillStyle = COMIC_PALETTE.fountainBright;
+      roundRect(ctx, 264, groundY - 114, 52, 20, 6);
       ctx.fill();
-      ctx.fillStyle = '#0f172a';
-      ctx.fillText('MILK', 290, groundY - 98);
+      ctx.stroke();
+      ctx.fillStyle = COMIC_PALETTE.outline;
+      ctx.fillText('MILK', 290, groundY - 100);
     } else if (stage.theme === 'carnival') {
-      // Carnival string lights!
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(-40, 122);
       ctx.quadraticCurveTo(195, 162, width + 40, 122);
       ctx.stroke();
-      const bulbColors = ['#facc15', '#f43f5e', '#38bdf8', '#4ade80'];
+      const bulbColors = [COMIC_PALETTE.accentMustard, '#FB7185', COMIC_PALETTE.fountainBright, '#4ADE80'];
       for (let i = 0; i < 9; i++) {
         const u = (i + 0.5) / 9;
         const lx = u * width;
         const ly = 122 + 40 * 2 * u * (1 - u);
         ctx.fillStyle = bulbColors[i % bulbColors.length];
         ctx.beginPath();
-        ctx.arc(lx, ly + 4, 4.5, 0, Math.PI * 2);
+        ctx.arc(lx, ly + 4, 5.5, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke();
       }
     }
   } else {
     if (stage.theme === 'neighborhood') {
-      // Cozy residential warm brick facades in background
-      ctx.fillStyle = '#fed7aa';
-      ctx.fillRect(18, groundY - 148, 76, 126);
-      ctx.fillRect(298, groundY - 134, 72, 112);
-      ctx.fillStyle = '#fb923c';
-      ctx.fillRect(14, groundY - 154, 84, 10);
-      ctx.fillRect(294, groundY - 140, 80, 10);
-      ctx.fillStyle = '#fef3c7';
-      for (const wx of [32, 62, 312, 342]) {
-        ctx.fillRect(wx, groundY - 122, 16, 22);
-        ctx.fillRect(wx, groundY - 88, 16, 22);
+      // Cozy comic brick facades + striped shop awning + highlight
+      for (const [bx, bw, bh] of [
+        [14, 80, 126],
+        [296, 78, 114],
+      ]) {
+        ctx.fillStyle = '#FDBA74';
+        ctx.fillRect(bx, groundY - 22 - bh, bw, bh);
+        ctx.strokeRect(bx, groundY - 22 - bh, bw, bh);
+        ctx.fillStyle = '#EA580C';
+        ctx.fillRect(bx - 4, groundY - 28 - bh, bw + 8, 12);
+        ctx.strokeRect(bx - 4, groundY - 28 - bh, bw + 8, 12);
+        ctx.fillStyle = COMIC_PALETTE.accentBright;
+        for (const wx of [bx + 14, bx + bw - 30]) {
+          ctx.fillRect(wx, groundY - bh + 2, 16, 20);
+          ctx.strokeRect(wx, groundY - bh + 2, 16, 20);
+          ctx.fillRect(wx, groundY - bh + 34, 16, 20);
+          ctx.strokeRect(wx, groundY - bh + 34, 16, 20);
+        }
       }
     } else if (stage.theme === 'park') {
-      // Park music pavilion arch behind fountain
-      ctx.strokeStyle = 'rgba(255,255,255,0.65)';
-      ctx.lineWidth = 4;
+      // Park music pavilion arch + festive triangles
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.arc(195, groundY - 22, 110, Math.PI, 0);
+      ctx.stroke();
+      ctx.strokeStyle = COMIC_PALETTE.surfaceWhite;
+      ctx.lineWidth = 3.5;
       ctx.beginPath();
       ctx.arc(195, groundY - 22, 110, Math.PI, 0);
       ctx.stroke();
     }
 
-    // Park trees
-    ctx.fillStyle = pal.treeColor;
+    // Comic bushes / trees with 3px #2B2B3A outline + highlight crescent
     for (const [tx, tr] of [
       [-18, 36],
       [58, 38],
@@ -219,8 +250,16 @@ export function drawPlazaBackground(
       [335, 38],
       [408, 36],
     ]) {
+      ctx.fillStyle = pal.treeColor;
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = COMIC_PALETTE.outlineWidth;
       ctx.beginPath();
       ctx.arc(tx, groundY - 45, tr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = COMIC_PALETTE.highlight;
+      ctx.beginPath();
+      ctx.ellipse(tx - tr * 0.25, groundY - 45 - tr * 0.45, tr * 0.42, tr * 0.18, -0.35, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -230,19 +269,30 @@ export function drawPlazaBackground(
   ctx.fillStyle = pal.railBody;
   ctx.fillRect(minX, groundY - 22, fullW, 22);
   ctx.fillStyle = pal.railTop;
-  ctx.fillRect(minX, groundY - 24, fullW, 4);
+  ctx.fillRect(minX, groundY - 25, fullW, 6);
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = COMIC_PALETTE.outlineWidth;
+  ctx.beginPath();
+  ctx.moveTo(minX, groundY - 25);
+  ctx.lineTo(minX + fullW, groundY - 25);
+  ctx.moveTo(minX, groundY - 19);
+  ctx.lineTo(minX + fullW, groundY - 19);
+  ctx.stroke();
 
-  // Elevated side ledges for Angry-Birds style upper props!
+  // Elevated side ledges
   for (const prop of world.props) {
     if (!prop.elevated) continue;
     const ledgeW = 52;
     const ledgeX = prop.side === 'left' ? 4 : width - 4 - ledgeW;
     const ledgeY = prop.y + prop.h / 2;
-    ctx.fillStyle = '#475569';
+    ctx.fillStyle = '#64748B';
     roundRect(ctx, ledgeX, ledgeY, ledgeW, 10, 4);
     ctx.fill();
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillRect(ledgeX + 2, ledgeY, ledgeW - 4, 3);
+    ctx.strokeStyle = COMIC_PALETTE.outline;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.fillStyle = COMIC_PALETTE.highlight;
+    ctx.fillRect(ledgeX + 4, ledgeY + 2, ledgeW - 8, 3);
   }
 
   // Wet stone plaza ground
@@ -252,9 +302,15 @@ export function drawPlazaBackground(
   floorGrad.addColorStop(1, pal.floorBot);
   ctx.fillStyle = floorGrad;
   ctx.fillRect(minX, groundY, fullW, maxY - groundY);
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = COMIC_PALETTE.outlineWidth;
+  ctx.beginPath();
+  ctx.moveTo(minX, groundY);
+  ctx.lineTo(minX + fullW, groundY);
+  ctx.stroke();
 
   // Stone tile lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
   ctx.lineWidth = 1.5;
   for (let x = -104; x < width + 140; x += 62) {
     ctx.beginPath();
@@ -263,16 +319,16 @@ export function drawPlazaBackground(
     ctx.stroke();
   }
 
-  // Metal drainage grate
+  // Metal drainage grate with 3px comic outline
   const grateW = stage.grateRightX - stage.grateLeftX;
-  ctx.fillStyle = '#334155';
-  roundRect(ctx, stage.grateLeftX, groundY - 2, grateW, 14, 4);
+  ctx.fillStyle = '#475569';
+  roundRect(ctx, stage.grateLeftX, groundY - 2, grateW, 14, 5);
   ctx.fill();
-  ctx.strokeStyle = '#64748b';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = COMIC_PALETTE.outline;
+  ctx.lineWidth = COMIC_PALETTE.outlineWidth;
   ctx.stroke();
 
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = COMIC_PALETTE.outline;
   for (let sx = stage.grateLeftX + 10; sx < stage.grateRightX - 8; sx += 12) {
     ctx.fillRect(sx, groundY + 1, 5, 8);
   }
@@ -284,18 +340,20 @@ export function drawPlazaBackground(
     const shakeX = isSurgeWarn ? Math.sin(animTimeSec * 65) * 3 : 0;
 
     ctx.fillStyle = isSurgeWarn
-      ? '#ef4444'
+      ? COMIC_PALETTE.warningTomato
       : n.style === 'angled' && isTarget
-        ? '#0ea5e9'
+        ? COMIC_PALETTE.fountainCyan
         : isTarget
-          ? '#38bdf8'
-          : '#475569';
-    roundRect(ctx, n.x - 15 + shakeX, groundY - 5, 30, 8, 3);
+          ? COMIC_PALETTE.fountainBright
+          : '#64748B';
+    roundRect(ctx, n.x - 15 + shakeX, groundY - 6, 30, 9, 4);
     ctx.fill();
+    ctx.strokeStyle = COMIC_PALETTE.outline;
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
 
-    // Small angle indicator arrow on nozzle when angled
     if (isTarget && n.style === 'angled') {
-      ctx.fillStyle = '#fde047';
+      ctx.fillStyle = COMIC_PALETTE.accentBright;
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(n.tiltDeg > 0 ? '↗' : '↖', n.x, groundY + 9);
@@ -490,12 +548,16 @@ export function drawSingleFountainJet(
     ctx.fill();
 
     if (isPlugReward) {
-      ctx.strokeStyle = '#fde047';
+      ctx.strokeStyle = COMIC_PALETTE.accentBright;
       ctx.lineWidth = 3.5;
       ctx.stroke();
     } else if (isAngryWarn) {
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = COMIC_PALETTE.warningTomato;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = 2.4;
       ctx.stroke();
     }
 
@@ -611,82 +673,93 @@ export function drawPropsAndPickups(
     const hh = prop.h / 2;
 
     if (prop.kind === 'cup_tower') {
-      // Trash bin base + stacked paper cups
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = COMIC_PALETTE.outlineWidth;
       ctx.fillStyle = '#475569';
       roundRect(ctx, -hw + 2, 2, prop.w - 4, hh - 2, 4);
       ctx.fill();
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillRect(-hw, 0, prop.w, 5);
-      // 3 stacked paper cups on top
+      ctx.stroke();
+      ctx.fillStyle = '#94A3B8';
+      ctx.fillRect(-hw, 0, prop.w, 6);
+      ctx.strokeRect(-hw, 0, prop.w, 6);
       for (const [cx, cy] of [
         [-7, -10],
         [7, -10],
         [0, -22],
       ]) {
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 1.5;
+        ctx.fillStyle = COMIC_PALETTE.surfaceWhite;
+        ctx.lineWidth = 2.2;
         ctx.fillRect(cx - 5, cy - 6, 10, 11);
         ctx.strokeRect(cx - 5, cy - 6, 10, 11);
       }
     } else if (prop.kind === 'melon_stall') {
-      // Wooden crate + plump sunflower seed bags
-      ctx.fillStyle = '#b45309';
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = COMIC_PALETTE.outlineWidth;
+      ctx.fillStyle = '#D97706';
       roundRect(ctx, -hw, 0, prop.w, hh, 4);
       ctx.fill();
-      ctx.strokeStyle = '#78350f';
-      ctx.lineWidth = 1.5;
       ctx.stroke();
-      // Seed sacks
-      ctx.fillStyle = '#fde047';
+      ctx.fillStyle = COMIC_PALETTE.accentBright;
       ctx.beginPath();
       ctx.ellipse(-7, -8, 9, 11, -0.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
       ctx.ellipse(8, -9, 9, 12, 0.1, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#92400e';
-      ctx.font = 'bold 9px sans-serif';
+      ctx.stroke();
+      ctx.fillStyle = COMIC_PALETTE.outline;
+      ctx.font = '900 9px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('瓜子', 0, 14);
     } else if (prop.kind === 'balloon_cart') {
-      // Cute vendor cart + 3 bobbing colorful balloons
-      ctx.fillStyle = '#e11d48';
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = COMIC_PALETTE.outlineWidth;
+      ctx.fillStyle = COMIC_PALETTE.warningTomato;
       roundRect(ctx, -hw + 2, 4, prop.w - 4, hh - 8, 5);
       ctx.fill();
-      ctx.fillStyle = '#0f172a';
+      ctx.stroke();
+      ctx.fillStyle = COMIC_PALETTE.outline;
       ctx.beginPath();
       ctx.arc(-8, hh - 2, 5, 0, Math.PI * 2);
       ctx.arc(8, hh - 2, 5, 0, Math.PI * 2);
       ctx.fill();
       const bob = Math.sin(animTimeSec * 4) * 2.5;
       for (const [bx, by, col] of [
-        [-9, -15 + bob, '#facc15'],
-        [8, -14 - bob, '#38bdf8'],
-        [0, -24 + bob * 0.6, '#f43f5e'],
+        [-9, -15 + bob, COMIC_PALETTE.accentMustard],
+        [8, -14 - bob, COMIC_PALETTE.fountainBright],
+        [0, -24 + bob * 0.6, '#FB7185'],
       ] as const) {
-        ctx.strokeStyle = '#cbd5e1';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = COMIC_PALETTE.outline;
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(0, 4);
         ctx.lineTo(bx, by + 7);
         ctx.stroke();
         ctx.fillStyle = col;
+        ctx.lineWidth = 2.4;
         ctx.beginPath();
         ctx.ellipse(bx, by, 7, 8.5, 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke();
       }
     } else {
-      // coffee_rack: trendy takeaway coffee cup stand
-      ctx.fillStyle = '#78350f';
+      ctx.strokeStyle = COMIC_PALETTE.outline;
+      ctx.lineWidth = COMIC_PALETTE.outlineWidth;
+      ctx.fillStyle = '#92400E';
       roundRect(ctx, -hw + 3, -6, prop.w - 6, hh + 6, 4);
       ctx.fill();
+      ctx.stroke();
       for (const [cx, cy] of [
         [-7, -14],
         [7, -14],
         [0, -2],
       ]) {
-        ctx.fillStyle = '#f5e6d3';
+        ctx.fillStyle = '#F5E6D3';
+        ctx.lineWidth = 2;
         ctx.fillRect(cx - 5, cy - 6, 10, 12);
-        ctx.fillStyle = '#0f172a';
+        ctx.strokeRect(cx - 5, cy - 6, 10, 12);
+        ctx.fillStyle = COMIC_PALETTE.outline;
         ctx.fillRect(cx - 6, cy - 8, 12, 3);
       }
     }
